@@ -1,0 +1,65 @@
+name: App Android build
+
+# Comprueba que `expo prebuild` genera un proyecto Android que compila (HU-006).
+# El directorio android/ se genera en cada ejecución y nunca se versiona.
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'app/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/app-android-build.yml'
+
+concurrency:
+  group: app-android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-debug:
+    name: expo prebuild + assembleDebug
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Perfil de staging con una URL de ejemplo: solo valida la configuración por perfil.
+      APP_ENV: staging
+      EXPO_PUBLIC_API_URL: https://api-staging.example.com
+      EXPO_NO_TELEMETRY: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: expo prebuild (Android)
+        working-directory: app
+        run: pnpm exec expo prebuild --platform android --no-install
+
+      - name: Gradle assembleDebug
+        working-directory: app/android
+        # Una sola ABI para acortar la compilación nativa en CI.
+        run: ./gradlew assembleDebug --no-daemon -PreactNativeArchitectures=arm64-v8a
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: panter-staging-debug-apk
+          path: app/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+          if-no-files-found: error

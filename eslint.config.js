@@ -30,6 +30,8 @@ export default tseslint.config(
       '**/ios/**',
       '**/worker-configuration.d.ts',
       '**/next-env.d.ts',
+      '**/.expo/**',
+      '**/expo-env.d.ts',
     ],
   },
   js.configs.recommended,
@@ -47,6 +49,12 @@ export default tseslint.config(
       ],
       '@typescript-eslint/consistent-type-imports': 'error',
     },
+  },
+  // Archivos de configuración CommonJS de la app Expo (metro.config.js, babel.config.js).
+  {
+    files: ['app/*.config.js'],
+    languageOptions: { sourceType: 'commonjs' },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   // Capa de dominio: TypeScript puro. Solo puede depender de sí misma y de @panter/contracts.
   {
