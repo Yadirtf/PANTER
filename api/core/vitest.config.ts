@@ -4,7 +4,10 @@ import { defineConfig } from 'vitest/config';
 // Las pruebas corren dentro de workerd con los bindings de wrangler.jsonc simulados por
 // Miniflare (KV, R2 y Queue locales). El service binding REALTIME apunta a un Worker
 // auxiliar "panter-realtime" que imita el contrato de GET /health de api/realtime.
+// Solo test/: las pruebas de integración (test-integration/) corren en Node con
+// vitest.integration.config.ts.
 export default defineConfig({
+  test: { include: ['test/**/*.test.ts'] },
   plugins: [
     cloudflareTest({
       wrangler: { configPath: './wrangler.jsonc' },

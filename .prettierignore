@@ -9,3 +9,4 @@ coverage/
 .open-next/
 android/
 ios/
+api/core/drizzle/meta/
