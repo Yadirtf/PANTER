@@ -1,5 +1,5 @@
 // Worker panter-api (api-core). Especificación §3 y §10.
-// - Nivel superior: entorno local (`wrangler dev`) y pruebas (vitest-pool-workers).
+// - Nivel superior: entorno local (`wrangler dev`) y pruebas (@cloudflare/vitest-plugin).
 // - env.staging → panter-api-staging · env.production → panter-api.
 // Los bindings y las vars NO se heredan entre entornos en Wrangler: se repiten en cada uno.
 // APP_VERSION y GIT_COMMIT valen "dev" por defecto; el despliegue los sobrescribe con
@@ -8,9 +8,9 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "panter-api",
   "main": "src/index.ts",
-  // No puede superar la fecha que soporta el workerd de @cloudflare/vitest-pool-workers
-  // (0.23.0 → 2026-08-22); si no, las pruebas no arrancan.
-  "compatibility_date": "2026-08-15",
+  // Misma fecha que api/realtime y web. No puede superar la que soporta el workerd de
+  // @cloudflare/vitest-plugin (miniflare 5.20261110.x); si no, las pruebas no arrancan.
+  "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
 

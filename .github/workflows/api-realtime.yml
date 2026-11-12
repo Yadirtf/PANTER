@@ -1,0 +1,98 @@
+name: Deploy api-realtime
+
+# Despliega el Worker panter-realtime (Especificación §10.2): `wrangler deploy --env <ambiente>`,
+# que también aplica las migraciones de Durable Objects declaradas en wrangler.jsonc.
+# - push a develop → staging · push a main → production · manual (workflow_dispatch).
+# - Secretos en el GitHub Environment (staging / production): CLOUDFLARE_API_TOKEN y
+#   CLOUDFLARE_ACCOUNT_ID. Si faltan, el job termina en verde con un aviso (Docs/DESPLIEGUE.md).
+# - Se despliega antes que api-realtime: panter-api lo usa por service binding (REALTIME).
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'api/realtime/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/api-realtime.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente de destino (production solo desde main)
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Desplegar api-realtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'staging') }}
+    concurrency:
+      group: deploy-api-realtime-${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'staging') }}
+      cancel-in-progress: false
+    env:
+      DEPLOY_ENV: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'staging') }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - name: Comprobar ambiente y secretos
+        id: secrets
+        env:
+          HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: |
+          if [ "$DEPLOY_ENV" = "production" ] && [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::production solo se despliega desde main (rama actual: ${GITHUB_REF_NAME})."
+            exit 1
+          fi
+          missing=()
+          [ "$HAS_CF_TOKEN" = "true" ] || missing+=(CLOUDFLARE_API_TOKEN)
+          [ "$HAS_CF_ACCOUNT" = "true" ] || missing+=(CLOUDFLARE_ACCOUNT_ID)
+          if [ ${#missing[@]} -gt 0 ]; then
+            msg="Despliegue de api-realtime a ${DEPLOY_ENV} omitido: faltan los secretos ${missing[*]} en el GitHub Environment '${DEPLOY_ENV}'. Ver Docs/DESPLIEGUE.md."
+            echo "::warning title=Despliegue omitido::${msg}"
+            {
+              echo "### ⚠️ api-realtime no se desplegó a \`${DEPLOY_ENV}\`"
+              echo
+              echo "${msg}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.ready == 'true'
+
+      - uses: pnpm/action-setup@v4
+        if: steps.secrets.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar dependencias
+        if: steps.secrets.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: wrangler deploy
+        if: steps.secrets.outputs.ready == 'true'
+        working-directory: api/realtime
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          pnpm exec wrangler deploy --env "$DEPLOY_ENV" \
+            --var "APP_VERSION:${VERSION}" --var "GIT_COMMIT:${GITHUB_SHA}"
+          {
+            echo "### ✅ api-realtime desplegado a \`${DEPLOY_ENV}\`"
+            echo
+            echo "Versión \`${VERSION}\`, commit \`${GITHUB_SHA}\`. Comprobar con \`GET /health\`."
+          } >> "$GITHUB_STEP_SUMMARY"
