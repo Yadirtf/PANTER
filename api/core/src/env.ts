@@ -14,6 +14,13 @@ export interface Env {
   EVENTS: Queue;
   /** Service binding al Worker panter-realtime. */
   REALTIME: Fetcher;
+  /**
+   * Secreto: cadena de conexión de Neon de la rama del ambiente (staging → rama `staging`,
+   * production → rama `main`). Se carga con `wrangler secret put DATABASE_URL --env <ambiente>`
+   * y en local con `.dev.vars`. Opcional en el tipo porque las pruebas de Workers y los
+   * endpoints sin base de datos (p. ej. /health) funcionan sin él; `createDb` falla si falta.
+   */
+  DATABASE_URL?: string;
 }
 
 /** Tipo de contexto de Hono para toda la app. */

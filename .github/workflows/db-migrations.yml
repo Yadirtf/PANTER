@@ -1,0 +1,72 @@
+name: DB migrations
+
+# Aplica las migraciones Drizzle sobre un PostGIS real y corre las pruebas de integración.
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'api/core/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/db-migrations.yml'
+
+concurrency:
+  group: db-migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Migraciones y pruebas de integración (PostGIS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: panter
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d panter"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/panter
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Esquema y migraciones sincronizados
+        working-directory: api/core
+        run: |
+          pnpm db:check
+          pnpm db:generate
+          if [ -n "$(git status --porcelain drizzle)" ]; then
+            echo "::error::El esquema Drizzle cambió sin migración. Corre 'pnpm db:generate' y versiona ./drizzle."
+            git status --porcelain drizzle
+            exit 1
+          fi
+
+      - name: Aplicar migraciones
+        run: pnpm --filter @panter/api-core db:migrate
+
+      - name: Reaplicar migraciones (idempotencia)
+        run: pnpm --filter @panter/api-core db:migrate
+
+      - name: Pruebas de integración
+        run: pnpm --filter @panter/api-core test:integration
