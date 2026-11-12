@@ -1,0 +1,55 @@
+// Worker "panter-web" (Next.js vía @opennextjs/cloudflare).
+// Entornos: sin --env (local/preview), --env staging (panter-web-staging), --env production (panter-web).
+// NEXT_PUBLIC_API_URL se incrusta en el build de Next: ver .env.example.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "panter-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "services": [
+    {
+      // Autorreferencia que OpenNext usa para la caché.
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "panter-web",
+    },
+  ],
+  "observability": {
+    "enabled": true,
+  },
+  "vars": {
+    "APP_ENV": "development",
+  },
+  "env": {
+    "staging": {
+      "name": "panter-web-staging",
+      "workers_dev": true,
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "panter-web-staging",
+        },
+      ],
+      "vars": {
+        "APP_ENV": "staging",
+      },
+    },
+    "production": {
+      "name": "panter-web",
+      "workers_dev": true,
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "panter-web",
+        },
+      ],
+      "vars": {
+        "APP_ENV": "production",
+      },
+    },
+  },
+}
