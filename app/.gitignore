@@ -1,0 +1,33 @@
+# Dependencias
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Proyectos nativos generados por `expo prebuild` (no se versionan)
+/android
+/ios
+.kotlin/
+
+# Firmas y llaves
+*.jks
+*.p8
+*.p12
+*.key
+*.keystore
+*.mobileprovision
+*.pem
+
+# Metro
+.metro-health-check*
+
+# Variables de entorno locales (la raíz ignora .env.*; el ejemplo sí se versiona)
+.env
+.env*.local
+!.env.example
+
+# TypeScript
+*.tsbuildinfo

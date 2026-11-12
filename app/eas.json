@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/expo/eas-cli/main/packages/eas-json/schema/eas.schema.json",
+  "cli": {
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": { "APP_ENV": "development" }
+    },
+    "staging": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": { "APP_ENV": "staging" }
+    },
+    "production": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": { "APP_ENV": "production" }
+    }
+  }
+}
