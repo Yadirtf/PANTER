@@ -1,0 +1,16 @@
+{
+  // Código que corre en Node, no en Workers: migraciones, configs de herramientas y pruebas de
+  // integración contra PostgreSQL. Se tipa aparte para no mezclar @types/node con workers-types.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": [
+    "scripts",
+    "test-integration",
+    "drizzle.config.ts",
+    "vitest.integration.config.ts",
+    "src/shared/domain",
+    "src/shared/infrastructure/db"
+  ]
+}
