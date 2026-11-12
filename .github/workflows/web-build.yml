@@ -1,0 +1,46 @@
+name: Web build
+
+# Comprueba que el Worker panter-web compila con OpenNext. No despliega (eso lo hace web.yml, HU-007).
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'web/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/web-build.yml'
+
+concurrency:
+  group: web-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build OpenNext (panter-web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Build OpenNext
+        working-directory: web
+        run: pnpm exec opennextjs-cloudflare build
+
+      - name: Verificar salida del Worker
+        working-directory: web
+        run: test -f .open-next/worker.js && test -d .open-next/assets

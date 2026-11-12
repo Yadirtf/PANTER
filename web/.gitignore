@@ -1,0 +1,12 @@
+# Generados por Next.js / OpenNext / Wrangler
+.next/
+.open-next/
+.wrangler/
+next-env.d.ts
+cloudflare-env.d.ts
+*.tsbuildinfo
+
+# Variables locales (la raíz ignora .env.*); las plantillas sí se versionan.
+!.env.example
+!.env.staging.example
+!.env.production.example
