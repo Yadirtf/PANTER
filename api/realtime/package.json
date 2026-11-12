@@ -1,0 +1,21 @@
+{
+  "name": "@panter/api-realtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Worker panter-realtime: Durable Objects y WebSockets de PANTER",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.8.1",
+    "@cloudflare/workers-types": "^5.20261112.1",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.161.0"
+  }
+}
