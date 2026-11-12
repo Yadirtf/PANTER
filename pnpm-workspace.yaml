@@ -1,0 +1,6 @@
+packages:
+  - api/core
+  - api/realtime
+  - web
+  - app
+  - packages/contracts

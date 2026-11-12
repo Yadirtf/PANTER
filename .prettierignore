@@ -1,0 +1,11 @@
+pnpm-lock.yaml
+Docs/
+node_modules/
+dist/
+build/
+coverage/
+.wrangler/
+.next/
+.open-next/
+android/
+ios/
