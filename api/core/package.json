@@ -1,0 +1,28 @@
+{
+  "name": "@panter/api-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Worker panter-api: API REST de PANTER (Hono)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^1.6.3",
+    "hono": "^4.13.18",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/workers-types": "^5.20261112.1",
+    "@vitest/runner": "~4.1.12",
+    "@vitest/snapshot": "~4.1.12",
+    "typescript": "~5.9.3",
+    "vitest": "~4.1.12",
+    "wrangler": "^4.161.0"
+  }
+}
