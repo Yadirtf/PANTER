@@ -29,8 +29,8 @@ echo "build-tools: $build_tools"
 certs="$("$build_tools/apksigner" verify --verbose --print-certs "$APK")"
 echo "$certs"
 
-sha256="$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: *//p' | head -n 1)"
-subject="$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate DN: *//p' | head -n 1)"
+sha256="$(printf '%s\n' "$certs" | sed -nE 's/^(Signer #1|V[0-9.]+ Signer):? certificate SHA-256 digest: *//p' | head -n 1)"
+subject="$(printf '%s\n' "$certs" | sed -nE 's/^(Signer #1|V[0-9.]+ Signer):? certificate DN: *//p' | head -n 1)"
 [ -n "$sha256" ] || {
   echo "::error::apksigner no devolvió el SHA-256 del certificado."
   exit 1
