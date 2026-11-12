@@ -1,0 +1,150 @@
+name: App release
+
+# APK de producción firmada y publicada en GitHub Releases (HU-008, Docs/ESPECIFICACION.md §10.2-10.3).
+#   git tag app-v0.3.0 && git push origin app-v0.3.0
+# versionName = tag sin "app-v"; versionCode = github.run_number + VERSION_CODE_OFFSET.
+# También se puede lanzar a mano (workflow_dispatch): sobre un tag app-v*, o sobre una rama
+# indicando la versión; en ese caso el Release crea el tag app-v<versión> en el commit actual.
+on:
+  push:
+    tags: ['app-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión X.Y.Z (solo si no se ejecuta sobre un tag app-v*)'
+        required: false
+        type: string
+
+concurrency:
+  group: app-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: APK firmada + GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    permissions:
+      contents: write
+    env:
+      # Súbelo por encima del último versionCode publicado si este workflow se recrea o renombra.
+      VERSION_CODE_OFFSET: 100
+    steps:
+      - name: Validar secretos y variables
+        env:
+          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAS_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+          API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+        run: |
+          missing=()
+          [ "$HAS_KEYSTORE" = true ] || missing+=(ANDROID_KEYSTORE_BASE64)
+          [ "$HAS_STORE_PASSWORD" = true ] || missing+=(ANDROID_KEYSTORE_PASSWORD)
+          [ "$HAS_ALIAS" = true ] || missing+=(ANDROID_KEY_ALIAS)
+          [ "$HAS_KEY_PASSWORD" = true ] || missing+=(ANDROID_KEY_PASSWORD)
+          ok=true
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Faltan los secretos del keystore::Faltan ${missing[*]}. Una release sin la llave fija es inservible: Android no permitiría actualizar la app encima. Genera la llave una sola vez con scripts/generar_keystore.sh y carga los secretos (ver app/README.md)."
+            ok=false
+          fi
+          if [ -z "$API_URL" ]; then
+            echo "::error title=Falta EXPO_PUBLIC_API_URL::Define la variable EXPO_PUBLIC_API_URL (https) en el Environment production (Settings > Environments > production)."
+            ok=false
+          fi
+          [ "$ok" = true ]
+
+      - uses: actions/checkout@v4
+        with:
+          # Historial completo y tags para el changelog desde el tag app-v* anterior.
+          fetch-depth: 0
+
+      - name: Calcular versión
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          if [ "$REF_TYPE" = tag ]; then
+            source_ref="$REF_NAME"
+          elif [ -n "$INPUT_VERSION" ]; then
+            source_ref="$INPUT_VERSION"
+          else
+            echo "::error::Ejecuta el workflow sobre un tag app-v* o indica la versión."
+            exit 1
+          fi
+          bash scripts/app_version.sh "$source_ref" "$RUN_NUMBER" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Comprobar que la versión no está publicada
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Ya existe el Release $TAG. Publica una versión nueva (otro tag app-v*)."
+            exit 1
+          fi
+          if [ "$REF_TYPE" != tag ] && git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::El tag $TAG ya existe: ejecuta el workflow sobre ese tag en lugar de la rama."
+            exit 1
+          fi
+
+      - name: APK firmada (assembleRelease)
+        id: apk
+        uses: ./.github/actions/android-release-apk
+        with:
+          app-env: production
+          api-url: ${{ vars.EXPO_PUBLIC_API_URL }}
+          version: ${{ steps.version.outputs.version }}
+          version-code: ${{ steps.version.outputs.version_code }}
+          apk-name: panter-${{ steps.version.outputs.version }}.apk
+          require-signing: 'true'
+          keystore-base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Changelog
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          CERT_SHA256: ${{ steps.apk.outputs.cert-sha256 }}
+        run: |
+          {
+            bash scripts/app_changelog.sh "$TAG" "$GITHUB_SHA"
+            echo
+            echo "### Instalación"
+            echo
+            echo "Descarga \`panter-$VERSION.apk\` y ábrela en el teléfono Android. Para actualizar, instala encima de la versión anterior. Instrucciones: [app/README.md]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/app/README.md#instalar-la-apk)."
+            echo
+            echo "- versionName \`$VERSION\` · versionCode \`$VERSION_CODE\`"
+            echo "- Certificado de firma SHA-256: \`$CERT_SHA256\`"
+          } > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          REF_TYPE: ${{ github.ref_type }}
+          APK: ${{ steps.apk.outputs.apk-path }}
+        run: |
+          args=(--title "PANTER $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md")
+          if [ "$REF_TYPE" = tag ]; then
+            args+=(--verify-tag)
+          else
+            args+=(--target "$GITHUB_SHA")
+          fi
+          [ "$PRERELEASE" = true ] && args+=(--prerelease)
+          gh release create "$TAG" "$APK" "$APK.sha256" "${args[@]}"
+          echo "Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

@@ -1,9 +1,10 @@
 import { defineConfig } from 'vitest/config';
 
-// Solo se prueban módulos puros (configuración y navegación); los componentes RN quedan fuera.
+// Solo se prueban módulos puros (configuración, navegación y plugins de Expo);
+// los componentes RN quedan fuera.
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['app.config.test.ts', 'src/**/*.test.ts', 'plugins/**/*.test.ts'],
   },
 });
