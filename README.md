@@ -20,6 +20,13 @@ Plataforma de movilidad y ecoturismo de Villagarzón (Putumayo).
 Ninguna app importa código de otra; solo `@panter/contracts` se comparte. Dentro de cada
 módulo del backend se sigue Clean Architecture ([ADR 0001](Docs/adr/0001-clean-architecture-por-modulo.md)).
 
+## Instalar la app (APK)
+
+La app Android se descarga de [GitHub Releases](https://github.com/Yadirtf/PANTER/releases/latest)
+(`panter-<versión>.apk`). Pasos de instalación, cómo actualizar encima de la versión anterior y
+qué hacer ante un "conflicto de firma": [`app/README.md`](app/README.md#instalar-la-apk).
+Publicar versiones y manejar la llave de firma: [`app/README.md`](app/README.md#versiones-y-releases-responsables).
+
 ## Requisitos
 
 - Node.js 20+ (CI usa la versión de `.nvmrc`)

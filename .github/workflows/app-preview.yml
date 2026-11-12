@@ -1,0 +1,71 @@
+name: App preview
+
+# APK de staging (apunta a la API de staging) como artefacto de la ejecución (HU-008).
+# Se firma con la llave de subida si existen los secretos del keystore; si no, con la debug.
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'app/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/app-preview.yml'
+      - '.github/actions/android-release-apk/**'
+  workflow_dispatch:
+
+concurrency:
+  group: app-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    name: APK de staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: staging
+    env:
+      # Marcador hasta que exista la variable EXPO_PUBLIC_API_URL del Environment staging.
+      DEFAULT_STAGING_API_URL: https://panter-api-staging.example.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Calcular versión y API
+        id: version
+        env:
+          API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          base="$(jq -r .version app/package.json)"
+          bash scripts/app_version.sh "$base-staging.$RUN_NUMBER" "$RUN_NUMBER" | tee -a "$GITHUB_OUTPUT"
+          if [ -z "$API_URL" ]; then
+            API_URL="$DEFAULT_STAGING_API_URL"
+            echo "::warning::No existe vars.EXPO_PUBLIC_API_URL en el Environment staging; se usa $API_URL."
+          fi
+          echo "api_url=$API_URL" | tee -a "$GITHUB_OUTPUT"
+
+      - name: APK de staging (assembleRelease)
+        id: apk
+        uses: ./.github/actions/android-release-apk
+        with:
+          app-env: staging
+          api-url: ${{ steps.version.outputs.api_url }}
+          version: ${{ steps.version.outputs.version }}
+          version-code: ${{ steps.version.outputs.version_code }}
+          apk-name: panter-staging-${{ steps.version.outputs.version }}.apk
+          require-signing: 'false'
+          keystore-base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: panter-staging-${{ steps.version.outputs.version }}
+          path: |
+            ${{ steps.apk.outputs.apk-path }}
+            ${{ steps.apk.outputs.apk-path }}.sha256
+          retention-days: 14
+          if-no-files-found: error

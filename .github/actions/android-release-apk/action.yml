@@ -1,0 +1,152 @@
+name: APK de release de PANTER
+description: >-
+  expo prebuild + Gradle assembleRelease firmado con la llave de subida (o la debug si se
+  permite), y verificación de firma y versión con apksigner/aapt2. Requiere actions/checkout.
+  La usan app.yml, app-preview.yml y app-release-check.yml (HU-008).
+
+inputs:
+  app-env:
+    description: development | staging | production
+    required: true
+  api-url:
+    description: EXPO_PUBLIC_API_URL (https fuera de development)
+    required: true
+  version:
+    description: versionName (SemVer, sin el prefijo app-v)
+    required: true
+  version-code:
+    description: versionCode (entero creciente)
+    required: true
+  apk-name:
+    description: Nombre del archivo final, p. ej. panter-0.3.0.apk
+    required: true
+  require-signing:
+    description: "'true' para fallar si faltan los secretos del keystore"
+    required: false
+    default: 'false'
+  architectures:
+    description: ABIs nativas (reactNativeArchitectures)
+    required: false
+    default: arm64-v8a,armeabi-v7a
+  keystore-base64:
+    description: Secreto ANDROID_KEYSTORE_BASE64
+    required: false
+    default: ''
+  keystore-password:
+    description: Secreto ANDROID_KEYSTORE_PASSWORD
+    required: false
+    default: ''
+  key-alias:
+    description: Secreto ANDROID_KEY_ALIAS
+    required: false
+    default: ''
+  key-password:
+    description: Secreto ANDROID_KEY_PASSWORD
+    required: false
+    default: ''
+
+outputs:
+  apk-path:
+    description: Ruta de la APK renombrada (junto a <apk-name>.sha256)
+    value: ${{ steps.copy.outputs.apk-path }}
+  signing:
+    description: upload | debug
+    value: ${{ steps.keystore.outputs.signing }}
+  cert-sha256:
+    description: SHA-256 del certificado con el que se firmó la APK
+    value: ${{ steps.verify.outputs.cert-sha256 }}
+
+runs:
+  using: composite
+  steps:
+    # Primero: falla en segundos si faltan los secretos y la firma es obligatoria.
+    - name: Preparar keystore
+      id: keystore
+      shell: bash
+      env:
+        KEYSTORE_BASE64: ${{ inputs.keystore-base64 }}
+        KEYSTORE_PASSWORD: ${{ inputs.keystore-password }}
+        KEY_ALIAS: ${{ inputs.key-alias }}
+        KEY_PASSWORD: ${{ inputs.key-password }}
+        REQUIRE_SIGNING: ${{ inputs.require-signing }}
+      run: bash "$GITHUB_ACTION_PATH/preparar-keystore.sh"
+
+    # app.config.ts se evalúa en prebuild y otra vez al empaquetar el JS en Gradle, y
+    # EXPO_PUBLIC_API_URL se incrusta en el bundle: se exportan para todos los pasos.
+    - name: Configurar perfil y versión
+      shell: bash
+      env:
+        APP_ENV_INPUT: ${{ inputs.app-env }}
+        API_URL_INPUT: ${{ inputs.api-url }}
+        VERSION_INPUT: ${{ inputs.version }}
+        VERSION_CODE_INPUT: ${{ inputs.version-code }}
+      run: |
+        {
+          echo "APP_ENV=$APP_ENV_INPUT"
+          echo "EXPO_PUBLIC_API_URL=$API_URL_INPUT"
+          echo "APP_VERSION=$VERSION_INPUT"
+          echo "APP_VERSION_CODE=$VERSION_CODE_INPUT"
+          echo "EXPO_NO_TELEMETRY=1"
+        } >> "$GITHUB_ENV"
+
+    - uses: pnpm/action-setup@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+
+    - uses: gradle/actions/setup-gradle@v4
+
+    - name: Instalar dependencias
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: expo prebuild (Android)
+      shell: bash
+      working-directory: app
+      run: pnpm exec expo prebuild --platform android --no-install --clean
+
+    - name: Gradle assembleRelease
+      shell: bash
+      working-directory: app/android
+      env:
+        PANTER_UPLOAD_STORE_FILE: ${{ steps.keystore.outputs.store-file }}
+        PANTER_UPLOAD_STORE_PASSWORD: ${{ inputs.keystore-password }}
+        PANTER_UPLOAD_KEY_ALIAS: ${{ inputs.key-alias }}
+        PANTER_UPLOAD_KEY_PASSWORD: ${{ inputs.key-password }}
+        PANTER_REQUIRE_RELEASE_SIGNING: ${{ steps.keystore.outputs.signing == 'upload' && 'true' || 'false' }}
+        ARCHITECTURES: ${{ inputs.architectures }}
+      run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures="$ARCHITECTURES"
+
+    - name: Verificar firma y versión (apksigner)
+      id: verify
+      shell: bash
+      env:
+        APK: app/android/app/build/outputs/apk/release/app-release.apk
+        EXPECTED_VERSION: ${{ inputs.version }}
+        EXPECTED_VERSION_CODE: ${{ inputs.version-code }}
+        SIGNING: ${{ steps.keystore.outputs.signing }}
+        EXPECTED_CERT_SHA256: ${{ steps.keystore.outputs.cert-sha256 }}
+      run: bash "$GITHUB_ACTION_PATH/verificar-apk.sh"
+
+    - name: Renombrar APK
+      id: copy
+      shell: bash
+      env:
+        APK_NAME: ${{ inputs.apk-name }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/apk"
+        cp app/android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/apk/$APK_NAME"
+        (cd "$RUNNER_TEMP/apk" && sha256sum "$APK_NAME" > "$APK_NAME.sha256")
+        echo "apk-path=$RUNNER_TEMP/apk/$APK_NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Borrar keystore
+      if: always()
+      shell: bash
+      run: rm -f "$RUNNER_TEMP/panter-upload.jks"

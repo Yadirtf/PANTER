@@ -1,0 +1,107 @@
+name: App release check
+
+# Valida el camino de release de la APK (HU-008) sin secretos reales, sin tags y sin Releases:
+# genera un keystore TEMPORAL, ejecuta la misma acción que app.yml (assembleRelease firmado,
+# verificación con apksigner) y prueba los scripts de versión, changelog y keystore.
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'app/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'scripts/app_*.sh'
+      - 'scripts/generar_keystore.sh'
+      - 'scripts/probar_app_release.sh'
+      - '.github/actions/android-release-apk/**'
+      - '.github/workflows/app.yml'
+      - '.github/workflows/app-preview.yml'
+      - '.github/workflows/app-release-check.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: app-release-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    name: Scripts de release (versión, changelog, keystore)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: shellcheck
+        run: >-
+          shellcheck scripts/app_version.sh scripts/app_changelog.sh scripts/generar_keystore.sh
+          scripts/probar_app_release.sh .github/actions/android-release-apk/*.sh
+
+      - name: Pruebas de los scripts
+        run: bash scripts/probar_app_release.sh
+
+  signed-release:
+    name: assembleRelease firmado con keystore temporal
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Keystore temporal (scripts/generar_keystore.sh)
+        id: keystore
+        run: |
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          PANTER_KEYSTORE_PASSWORD="$password" PANTER_KEY_ALIAS=panter-ci \
+            PANTER_KEY_DNAME="CN=PANTER CI temporal, O=PANTER, C=CO" \
+            bash scripts/generar_keystore.sh "$RUNNER_TEMP/ci-keys/panter-ci.jks"
+          {
+            echo "password=$password"
+            echo "base64=$(cat "$RUNNER_TEMP/ci-keys/panter-ci.jks.base64.txt")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Calcular versión (como app.yml con el tag app-v0.0.0-ci.<run>)
+        id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: bash scripts/app_version.sh "app-v0.0.0-ci.$RUN_NUMBER" "$RUN_NUMBER" | tee -a "$GITHUB_OUTPUT"
+
+      - name: APK firmada (misma acción que app.yml)
+        id: apk
+        uses: ./.github/actions/android-release-apk
+        with:
+          app-env: production
+          api-url: https://api.example.com
+          version: ${{ steps.version.outputs.version }}
+          version-code: ${{ steps.version.outputs.version_code }}
+          apk-name: panter-${{ steps.version.outputs.version }}.apk
+          require-signing: 'true'
+          # Una sola ABI para acortar la compilación nativa en CI.
+          architectures: arm64-v8a
+          keystore-base64: ${{ steps.keystore.outputs.base64 }}
+          keystore-password: ${{ steps.keystore.outputs.password }}
+          key-alias: panter-ci
+          key-password: ${{ steps.keystore.outputs.password }}
+
+      - name: Comprobar resultado
+        env:
+          SIGNING: ${{ steps.apk.outputs.signing }}
+          APK: ${{ steps.apk.outputs.apk-path }}
+          CERT_SHA256: ${{ steps.apk.outputs.cert-sha256 }}
+        run: |
+          [ "$SIGNING" = upload ] || { echo "::error::La APK no se firmó con el keystore temporal."; exit 1; }
+          [ -f "$APK" ] && [ -f "$APK.sha256" ] || { echo "::error::Falta la APK o su .sha256."; exit 1; }
+          (cd "$(dirname "$APK")" && sha256sum -c "$(basename "$APK").sha256")
+          echo "APK $(basename "$APK") firmada con el certificado temporal $CERT_SHA256."
