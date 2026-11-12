@@ -9,3 +9,5 @@ coverage/
 .open-next/
 android/
 ios/
+next-env.d.ts
+cloudflare-env.d.ts

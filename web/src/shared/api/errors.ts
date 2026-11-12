@@ -1,0 +1,65 @@
+import { z } from 'zod';
+
+/**
+ * Formato de error de la API (sección 4 de la especificación): `{ error: { code, message } }`.
+ * TODO: mover a @panter/contracts cuando HU-002 publique el esquema oficial.
+ */
+export const ApiErrorBodySchema = z.object({
+  error: z.object({
+    code: z.string().min(1),
+    message: z.string(),
+    details: z.unknown().optional(),
+  }),
+});
+export type ApiErrorBody = z.infer<typeof ApiErrorBodySchema>;
+
+/** Códigos que genera el propio cliente cuando la API no devuelve un error con formato. */
+export const ClientErrorCode = {
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  ABORTED: 'ABORTED',
+  INVALID_RESPONSE: 'INVALID_RESPONSE',
+  HTTP_ERROR: 'HTTP_ERROR',
+  UNKNOWN: 'UNKNOWN',
+} as const;
+export type ClientErrorCode = (typeof ClientErrorCode)[keyof typeof ClientErrorCode];
+
+/** Error normalizado que lanza el cliente HTTP en cualquier fallo. */
+export class ApiError extends Error {
+  override readonly name = 'ApiError';
+  readonly code: string;
+  /** Código HTTP; `0` si la petición no llegó a responder. */
+  readonly status: number;
+  readonly details?: unknown;
+
+  constructor(params: { code: string; message: string; status?: number; details?: unknown }) {
+    super(params.message);
+    this.code = params.code;
+    this.status = params.status ?? 0;
+    this.details = params.details;
+  }
+
+  toJSON(): ApiErrorBody {
+    return { error: { code: this.code, message: this.message } };
+  }
+}
+
+export function isApiError(value: unknown): value is ApiError {
+  return value instanceof ApiError;
+}
+
+/** Convierte cualquier valor lanzado en un `ApiError`. */
+export function toApiError(value: unknown): ApiError {
+  if (isApiError(value)) return value;
+  if (value instanceof DOMException && value.name === 'AbortError') {
+    return new ApiError({ code: ClientErrorCode.ABORTED, message: 'La petición fue cancelada.' });
+  }
+  if (value instanceof Error) {
+    return new ApiError({ code: ClientErrorCode.UNKNOWN, message: value.message });
+  }
+  return new ApiError({ code: ClientErrorCode.UNKNOWN, message: 'Error desconocido.' });
+}
+
+/** Normaliza cualquier error al formato `{ error: { code, message } }`. */
+export function toErrorBody(value: unknown): ApiErrorBody {
+  return toApiError(value).toJSON();
+}
