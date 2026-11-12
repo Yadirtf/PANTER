@@ -1,5 +1,11 @@
 name: CI
 
+# Valida cada PR (y cada push a develop/main). Especificación §10.2.
+# - ESLint y Prettier corren sobre todo el repositorio: tardan segundos y así las reglas
+#   de fronteras entre capas y paquetes se revisan siempre completas.
+# - TypeScript y pruebas corren solo en los paquetes afectados por el PR y en los que
+#   dependen de ellos (`pnpm --filter "...[origin/<base>]"`). Si cambia un archivo raíz
+#   (dependencias, configuración compartida o workflows) o en un push, corren en todos.
 on:
   pull_request:
     branches: [develop, main]
@@ -13,11 +19,84 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  WRANGLER_SEND_METRICS: 'false'
+
 jobs:
   check:
+    # Este nombre es el check obligatorio de la protección de ramas (Docs/DESPLIEGUE.md).
     name: Lint, formato, tipos y pruebas
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historia completa para comparar contra la rama base.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Paquetes afectados
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Push a ${GITHUB_REF_NAME}: se validan todos los paquetes."
+            echo "filter=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BASE="origin/${BASE_REF}"
+          CHANGED="$(git diff --name-only "${BASE}...HEAD")"
+          echo "Archivos cambiados respecto de ${BASE}:"
+          echo "$CHANGED"
+          ROOT_PATTERN='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|eslint\.config\.js|\.prettierrc\.json|\.prettierignore|\.nvmrc|\.github/)'
+          if echo "$CHANGED" | grep -Eq "$ROOT_PATTERN"; then
+            echo "Cambió un archivo raíz: se validan todos los paquetes."
+            echo "filter=" >> "$GITHUB_OUTPUT"
+          else
+            # "!panter" excluye el paquete raíz: sus scripts typecheck/test son recursivos.
+            echo "filter=--filter=...[${BASE}] --filter=!panter" >> "$GITHUB_OUTPUT"
+            echo "Paquetes a validar:"
+            pnpm --filter "...[${BASE}]" --filter '!panter' ls --depth -1
+          fi
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: Prettier
+        run: pnpm format:check
+
+      - name: TypeScript
+        env:
+          FILTER: ${{ steps.scope.outputs.filter }}
+        # set -f: el filtro lleva corchetes y no debe expandirse como glob.
+        run: |
+          set -f
+          if [ -z "$FILTER" ]; then pnpm typecheck; else pnpm $FILTER --if-present run typecheck; fi
+
+      - name: Pruebas
+        env:
+          FILTER: ${{ steps.scope.outputs.filter }}
+        run: |
+          set -f
+          if [ -z "$FILTER" ]; then pnpm test; else pnpm $FILTER --if-present run test; fi
+
+  deploy-config:
+    # Atrapa errores de wrangler.jsonc (bindings, entornos, bundling) sin cuenta de
+    # Cloudflare: `wrangler deploy --dry-run` compila y valida pero no sube nada.
+    name: Configuración de despliegue (wrangler --dry-run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -31,14 +110,15 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
 
-      - name: ESLint
-        run: pnpm lint
-
-      - name: Prettier
-        run: pnpm format:check
-
-      - name: TypeScript
-        run: pnpm typecheck
-
-      - name: Pruebas
-        run: pnpm test
+      - name: wrangler deploy --dry-run (api-core y api-realtime, staging y production)
+        run: |
+          set -euo pipefail
+          for dir in api/realtime api/core; do
+            for env in staging production; do
+              echo "::group::${dir} --env ${env}"
+              (cd "$dir" && pnpm exec wrangler deploy --dry-run --env "$env" \
+                --outdir "$RUNNER_TEMP/dry-run/${dir}/${env}" \
+                --var "APP_VERSION:ci" --var "GIT_COMMIT:${GITHUB_SHA}")
+              echo "::endgroup::"
+            done
+          done

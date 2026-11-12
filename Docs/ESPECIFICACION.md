@@ -142,7 +142,7 @@ Todo el sistema usa TypeScript en modo estricto y comparte tipos a través de `p
 | Rutas | OpenRouteService (plan Standard gratuito) | Llamado solo desde `api-core` |
 | Correo | Resend (principal) + Brevo (respaldo) | Ver sección 7 |
 | Push | Expo Push Notifications | Gratuito |
-| Pruebas | Vitest, `@cloudflare/vitest-pool-workers`, Playwright (web) |  |
+| Pruebas | Vitest, `@cloudflare/vitest-plugin`, Playwright (web) |  |
 | Calidad | ESLint, Prettier |  |
 | Errores | Sentry (plan gratuito) | API, web y app |
 

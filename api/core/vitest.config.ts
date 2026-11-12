@@ -1,4 +1,4 @@
-import { cloudflareTest } from '@cloudflare/vitest-pool-workers';
+import { cloudflareTest } from '@cloudflare/vitest-plugin';
 import { defineConfig } from 'vitest/config';
 
 // Las pruebas corren dentro de workerd con los bindings de wrangler.jsonc simulados por
@@ -16,7 +16,7 @@ export default defineConfig({
           {
             name: 'panter-realtime',
             modules: true,
-            compatibilityDate: '2026-08-15',
+            compatibilityDate: '2026-11-01',
             script: `export default {
               fetch(request) {
                 const url = new URL(request.url);

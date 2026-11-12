@@ -91,17 +91,18 @@ pnpm db:migrate && pnpm --filter @panter/api-core test:integration
 
 ### Dónde vive `DATABASE_URL`
 
-| Ambiente   | Rama Neon      | Dónde se configura                                                  |
-| ---------- | -------------- | ------------------------------------------------------------------- |
-| Local      | `dev-<nombre>` | `api/core/.dev.vars` (copiar `.dev.vars.example`; ignorado por git) |
-| Staging    | `staging`      | `wrangler secret put DATABASE_URL --env staging`                    |
-| Producción | `main`         | `wrangler secret put DATABASE_URL --env production`                 |
-| CI         | —              | GitHub Secrets `DATABASE_URL_STAGING` y `DATABASE_URL_PRODUCTION`   |
+| Ambiente   | Rama Neon      | Dónde se configura                                                       |
+| ---------- | -------------- | ------------------------------------------------------------------------ |
+| Local      | `dev-<nombre>` | `api/core/.dev.vars` (copiar `.dev.vars.example`; ignorado por git)      |
+| Staging    | `staging`      | `wrangler secret put DATABASE_URL --env staging`                         |
+| Producción | `main`         | `wrangler secret put DATABASE_URL --env production`                      |
+| CI         | —              | Secreto `DATABASE_URL` de los GitHub Environments `staging`/`production` |
 
-Los workflows de despliegue (HU-007, `api-core.yml`) corren `pnpm db:migrate` con
-`DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}` (push a `develop`) o
-`${{ secrets.DATABASE_URL_PRODUCTION }}` (push a `main`) antes de `wrangler deploy`. Las
-pruebas de PR no usan Neon: levantan un contenedor PostGIS propio.
+El workflow de despliegue `.github/workflows/api-core.yml` corre
+`pnpm --filter @panter/api-core db:migrate` con el secreto `DATABASE_URL` del GitHub
+Environment del ambiente (`staging` en push a `develop`, `production` en push a `main`) antes
+de `wrangler deploy`; sin ese secreto no despliega. Las pruebas de PR no usan Neon: levantan un
+contenedor PostGIS propio. Pasos completos en [Docs/DESPLIEGUE.md](../../Docs/DESPLIEGUE.md).
 
 `DATABASE_URL` es opcional en la interfaz `Env` (`src/env.ts`) para que `/health` y las
 pruebas de Workers funcionen sin base de datos; `createDb` falla con un mensaje claro si falta.
