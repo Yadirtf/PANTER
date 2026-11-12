@@ -1,0 +1,60 @@
+// Worker panter-realtime: estado en vivo con Durable Objects (Especificación §3.2).
+// vars y durable_objects no se heredan entre entornos: se repiten en cada env.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "panter-realtime",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_VERSION": "dev",
+    "GIT_COMMIT": "dev",
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "DRIVER_TRACKER", "class_name": "DriverTracker" },
+      { "name": "ZONE_INDEX", "class_name": "ZoneIndex" },
+      { "name": "TRIP_ROOM", "class_name": "TripRoom" },
+      { "name": "OPS_HUB", "class_name": "OpsHub" },
+    ],
+  },
+  // Plan gratuito: solo Durable Objects con almacenamiento SQLite (new_sqlite_classes).
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DriverTracker", "ZoneIndex", "TripRoom", "OpsHub"],
+    },
+  ],
+  "env": {
+    "staging": {
+      "name": "panter-realtime-staging",
+      "vars": {
+        "APP_VERSION": "dev",
+        "GIT_COMMIT": "dev",
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "DRIVER_TRACKER", "class_name": "DriverTracker" },
+          { "name": "ZONE_INDEX", "class_name": "ZoneIndex" },
+          { "name": "TRIP_ROOM", "class_name": "TripRoom" },
+          { "name": "OPS_HUB", "class_name": "OpsHub" },
+        ],
+      },
+    },
+    "production": {
+      "name": "panter-realtime",
+      "vars": {
+        "APP_VERSION": "dev",
+        "GIT_COMMIT": "dev",
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "DRIVER_TRACKER", "class_name": "DriverTracker" },
+          { "name": "ZONE_INDEX", "class_name": "ZoneIndex" },
+          { "name": "TRIP_ROOM", "class_name": "TripRoom" },
+          { "name": "OPS_HUB", "class_name": "OpsHub" },
+        ],
+      },
+    },
+  },
+}
