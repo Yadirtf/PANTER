@@ -26,7 +26,7 @@ build_tools="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V
 }
 echo "build-tools: $build_tools"
 
-certs="$("$build_tools/apksigner" verify --verbose --print-certs "$APK")"
+certs="$("$build_tools/apksigner" verify --verbose --print-certs "$APK" 2>&1)"
 echo "$certs"
 
 sha256="$(printf '%s\n' "$certs" | sed -nE 's/^(Signer #1|V[0-9.]+ Signer):? certificate SHA-256 digest: *//p' | head -n 1)"
@@ -49,7 +49,8 @@ elif [[ "$subject" != *"CN=Android Debug"* ]]; then
   echo "::warning::Se esperaba la llave debug y el certificado es: $subject"
 fi
 
-badging="$("$build_tools/aapt2" dump badging "$APK" | head -n 1)"
+badging_all="$("$build_tools/aapt2" dump badging "$APK" 2>&1)"
+badging="$(grep "^package:" <<<"$badging_all" | head -n 1 || true)"
 echo "$badging"
 package="$(sed -n "s/.*package: name='\([^']*\)'.*/\1/p" <<<"$badging")"
 version_code="$(sed -n "s/.* versionCode='\([^']*\)'.*/\1/p" <<<"$badging")"
