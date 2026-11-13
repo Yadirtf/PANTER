@@ -1,6 +1,7 @@
 import { buildGetHealth } from './composition/health';
 import { healthRoutes } from './modules/health/http/routes';
 import { createRouter } from './shared/http/create-app';
+import { corsMiddleware } from './shared/http/cors';
 import { errorHandler, notFoundHandler } from './shared/http/errors';
 import { ErrorSchema } from './shared/http/schemas';
 
@@ -10,6 +11,7 @@ export function createApp() {
 
   app.onError(errorHandler);
   app.notFound(notFoundHandler);
+  app.use('*', corsMiddleware());
 
   app.route('/', healthRoutes(buildGetHealth));
 
