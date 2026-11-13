@@ -265,6 +265,8 @@ Worker dice exactamente qué falta y cómo cargarlo.
 | Nombre                   | Tipo    | Dónde se carga                              | Para qué                                         |
 | ------------------------ | ------- | ------------------------------------------- | ------------------------------------------------ |
 | `OTP_SECRET`             | Secreto | Cloudflare (o `wrangler secret put`)        | Llave del hash de los códigos en KV              |
+| `JWT_PRIVATE_KEY`        | Secreto | Cloudflare (o `wrangler secret put`)        | Firmar los access tokens (RS256)                 |
+| `JWT_PUBLIC_KEY`         | Secreto | Cloudflare (o `wrangler secret put`)        | Verificarlos; se publica en el JWKS              |
 | `BREVO_API_KEY`          | Secreto | Cloudflare (o `wrangler secret put`)        | Enviar el correo con el código (Brevo)           |
 | `RESEND_API_KEY`         | Secreto | Cloudflare (opcional, cuando haya dominio)  | Respaldo automático (Resend)                     |
 | `OTP_DEV_ECHO_ALLOWLIST` | Secreto | Cloudflare, solo staging (opcional)         | Correos de testers con el código en los logs     |
@@ -272,6 +274,7 @@ Worker dice exactamente qué falta y cómo cargarlo.
 | `EMAIL_FROM`             | Var     | `api/core/wrangler.jsonc` (**hay que poner**) | Remitente verificado                           |
 | `EMAIL_FROM_NAME`        | Var     | `api/core/wrangler.jsonc` (ya viene)        | Nombre visible: `PANTER`                         |
 | `OTP_DEV_ECHO`           | Var     | `api/core/wrangler.jsonc` (ya viene)        | `true` en staging, `false` en producción         |
+| `JWT_KID`                | Var     | `api/core/wrangler.jsonc` (ya viene)        | Identificador de la llave (`kid`)                |
 
 **Cómo cargar un secreto** (cualquiera de las dos formas):
 
@@ -358,6 +361,44 @@ código y 5 minutos de vigencia. Se guardan en KV, que es **eventualmente consis
 cambio puede tardar hasta ~60 s en verse en otras ubicaciones de Cloudflare): en el piloto se
 acepta que, con peticiones casi simultáneas desde lugares distintos, el límite se exceda por
 poco.
+
+### M1.4 · Llaves JWT (sesión)
+
+Al verificar el código, la API emite un access token JWT RS256 de 15 minutos y un refresh token
+de 30 días. La web verifica el access token con la llave pública publicada en
+`GET /.well-known/jwks.json`.
+
+1. En tu computador (necesita `openssl`, que traen macOS, Linux y Git Bash en Windows), desde la
+   raíz del repositorio:
+
+   ```bash
+   scripts/generar_llaves_jwt.sh staging
+   ```
+
+   Crea `~/panter-keys/jwt-staging-<fecha>/` con `jwt-private.pem` (PKCS8), `jwt-public.pem`
+   (SPKI) y `kid.txt`, e imprime los comandos exactos para el paso 2.
+2. Carga los dos secretos en `panter-api-staging`:
+   - **Terminal** (desde `api/core`):
+     `pnpm exec wrangler secret put JWT_PRIVATE_KEY --env staging < ~/panter-keys/jwt-staging-<fecha>/jwt-private.pem`
+     y lo mismo con `JWT_PUBLIC_KEY` y `jwt-public.pem`.
+   - **Navegador:** Cloudflare → `panter-api-staging` → **Settings** → **Variables and
+     Secrets** → **Add** → **Secret**. Pega el contenido **completo** de cada archivo, incluidas
+     las líneas `-----BEGIN …-----` y `-----END …-----`. Si el campo junta todo en una línea no
+     pasa nada: la API reconstruye el PEM.
+3. `JWT_KID` ya vale `panter-staging-1` en `wrangler.jsonc`. La primera vez puedes dejarlo
+   así. **Al rotar las llaves usa siempre un kid nuevo** (el script sugiere uno con la fecha):
+   la web guarda el JWKS en caché hasta 10 minutos y elige la llave por kid.
+4. Comprueba que `https://panter-api-staging.<subdominio>.workers.dev/.well-known/jwks.json`
+   muestre `"kid": "panter-staging-1"`.
+5. Borra la carpeta `~/panter-keys/jwt-staging-<fecha>` (o guárdala cifrada). Para producción,
+   repite con `scripts/generar_llaves_jwt.sh production`, que genera llaves **distintas**.
+
+Qué pasa al rotar: los access tokens vigentes dejan de servir (duran 15 minutos y la app los
+renueva sola). Los refresh tokens siguen funcionando, así que nadie tiene que volver a ingresar.
+
+Sesiones: cada uso de `POST /auth/refresh` revoca el refresh token anterior. Si alguien
+reutiliza uno ya usado (posible robo), la API revoca toda esa sesión. `POST /auth/logout` solo
+necesita el refresh token. En KV se guarda el SHA-256 del refresh token, nunca el token.
 
 ## Variables de entorno en tu computador (desarrollo local, opcional)
 

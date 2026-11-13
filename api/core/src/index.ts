@@ -26,6 +26,12 @@ export function createApp(deps: AppDeps = { auth: buildAuthFactories() }) {
   app.route('/', authRoutes(deps.auth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
+  // Esquema de seguridad para las rutas protegidas con requireAuth (HU-104 en adelante).
+  app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'JWT',
+  });
   app.doc31('/openapi.json', (c) => ({
     openapi: '3.1.0',
     info: {

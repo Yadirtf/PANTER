@@ -109,12 +109,14 @@ pruebas de Workers funcionen sin base de datos; `createDb` falla con un mensaje 
 
 ## Login (módulos `auth` y `email`)
 
-| Pieza                   | Ubicación                                                                            |
-| ----------------------- | ------------------------------------------------------------------------------------ |
-| Correo (HU-102)         | `src/modules/email/` · composición en `src/composition/email.ts`                     |
-| OTP por correo (HU-101) | `src/modules/auth/` · composición en `src/composition/auth.ts`                       |
-| Rutas                   | `POST /auth/otp/request`, `POST /auth/otp/verify` (contratos de `@panter/contracts`) |
-| Secretos y vars         | [Guía de despliegue](../../Docs/GUIA-DESPLIEGUE.md#secretos-y-variables-de-m1-login) |
+| Pieza                   | Ubicación                                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Correo (HU-102)         | `src/modules/email/` · composición en `src/composition/email.ts`                                            |
+| OTP por correo (HU-101) | `src/modules/auth/` · composición en `src/composition/auth.ts`                                              |
+| Sesión JWT (HU-103)     | `application/session.ts`, `infrastructure/jose-access-tokens.ts`, `refresh-tokens.ts`                       |
+| Middleware              | `requireAuth()` de `src/composition/auth.ts` + `getActor(c)` (`http/require-auth.ts`)                       |
+| Rutas                   | `POST /auth/otp/request`, `/auth/otp/verify`, `/auth/refresh`, `/auth/logout`, `GET /.well-known/jwks.json` |
+| Secretos y vars         | [Guía de despliegue](../../Docs/GUIA-DESPLIEGUE.md#secretos-y-variables-de-m1-login)                        |
 
 - **OTP:** el código de 6 dígitos sale de `crypto.getRandomValues` (muestreo por rechazo, sin
   sesgo). En KV solo se guarda su HMAC-SHA256 con `OTP_SECRET`, y la clave KV también es un HMAC
@@ -127,6 +129,13 @@ pruebas de Workers funcionen sin base de datos; `createDb` falla con un mensaje 
 - **Sin filtrar cuentas:** `request` no consulta la base de datos y siempre responde 202 con el
   mismo cuerpo. La cuenta (rol PASSENGER) se crea en `verify` con una sola sentencia
   (`users` + `user_roles`, `ON CONFLICT`).
+- **Tokens:** el access token es un JWT RS256 de 15 min (jose). Lleva los claims de
+  `AccessTokenClaimsSchema` y `kid` en el header. El refresh token es opaco (32 bytes
+  base64url) y en KV se guarda su SHA-256 con un TTL de 30 días. Cada refresh rota el token;
+  reutilizar uno ya rotado revoca toda la familia (sesión). Las llaves se generan con
+  `scripts/generar_llaves_jwt.sh`.
+- **Rutas protegidas (HU-104):** `router.use('/ruta/*', requireAuth())` y `getActor(c)` en el
+  handler. Sin token devuelve 401 `UNAUTHENTICATED`; con el token vencido, 401 `TOKEN_EXPIRED`.
 - **Pruebas:** `test/unit/` cubre dominio y casos de uso con dobles en memoria, en Node.
   `test/` cubre rutas y adaptadores en workerd. Ninguna llama a Brevo ni a Resend: usan
   `fetch` simulado. `test-integration/user-repository.test.ts` prueba el repositorio contra

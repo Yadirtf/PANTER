@@ -26,6 +26,8 @@
     "EMAIL_FROM_NAME": "PANTER",
     // OTP_DEV_ECHO solo tiene efecto con ENVIRONMENT=staging (y la lista OTP_DEV_ECHO_ALLOWLIST).
     "OTP_DEV_ECHO": "false",
+    // kid de la llave JWT (HU-103). Llaves en los secretos JWT_PRIVATE_KEY y JWT_PUBLIC_KEY.
+    "JWT_KID": "panter-dev",
   },
   // MARCADOR: reemplazar por el ID real (`wrangler kv namespace create panter-kv`).
   // En `wrangler dev` y en las pruebas el KV es simulado por Miniflare y el ID no importa.
@@ -51,6 +53,8 @@
         "EMAIL_FROM_NAME": "PANTER",
         // Eco del OTP en los logs para los correos del secreto OTP_DEV_ECHO_ALLOWLIST.
         "OTP_DEV_ECHO": "true",
+        // kid de la llave JWT; cambiarlo al rotar las llaves (scripts/generar_llaves_jwt.sh).
+        "JWT_KID": "panter-staging-1",
       },
       // Namespace KV `panter-kv-staging`.
       "kv_namespaces": [{ "binding": "KV", "id": "94905b6be92b45a386fe5f4e8eeb9614" }],
@@ -73,6 +77,7 @@
         "EMAIL_FROM_NAME": "PANTER",
         // Imposible en production aunque valga "true": el código exige ENVIRONMENT=staging.
         "OTP_DEV_ECHO": "false",
+        "JWT_KID": "panter-production-1",
       },
       // MARCADOR: ID real del namespace KV de producción (pendiente de cuenta de Cloudflare).
       "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000002" }],

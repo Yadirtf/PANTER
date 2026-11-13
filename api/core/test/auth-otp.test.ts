@@ -1,12 +1,12 @@
 import {
   ApiErrorCode,
   AuthRoutes,
-  MeResponseSchema,
+  TokenPairResponseSchema,
   OTP_MAX_CODES_PER_WINDOW,
   OtpRequestResponseSchema,
 } from '@panter/contracts';
 import { env, exports } from 'cloudflare:workers';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAuthFactories, type AuthOverrides } from '../src/composition/auth';
 import type { Env } from '../src/env';
 import { createApp } from '../src/index';
@@ -19,6 +19,7 @@ import {
 } from '../src/modules/auth/infrastructure/kv-otp-store';
 import { BREVO_API_URL } from '../src/modules/email/infrastructure/brevo-email-sender';
 import { captureDelivery, MemoryUserRepository } from './support/auth-fakes';
+import { testKeys, type TestKeys } from './support/jwt-keys';
 
 const OTP_SECRET = 'test-otp-secret-0123456789abcdef0123456789abcdef';
 
@@ -28,8 +29,19 @@ async function clearKv() {
   await Promise.all(keys.map((k) => env.KV.delete(k.name)));
 }
 
+let keys: TestKeys;
+beforeAll(async () => {
+  keys = await testKeys();
+});
+
 function testEnv(extra: Partial<Env> = {}): Env {
-  return { ...env, OTP_SECRET, ...extra };
+  return {
+    ...env,
+    OTP_SECRET,
+    JWT_PRIVATE_KEY: keys.privateKeyPem,
+    JWT_PUBLIC_KEY: keys.publicKeyPem,
+    ...extra,
+  };
 }
 
 function setup(overrides: AuthOverrides = {}) {
@@ -182,13 +194,14 @@ describe('POST /auth/otp/verify', () => {
     return s.mail.lastCode(email)!;
   }
 
-  it('crea la cuenta PASSENGER y devuelve el perfil del contrato', async () => {
+  it('crea la cuenta PASSENGER y devuelve TokenPairResponse', async () => {
     const s = setup();
     const code = await requestCode(s);
     const res = await s.post(AuthRoutes.OTP_VERIFY, { email: 'ANA@panter.test', code });
     expect(res.status).toBe(200);
-    const profile = MeResponseSchema.parse(await res.json());
-    expect(profile).toMatchObject({
+    const pair = TokenPairResponseSchema.parse(await res.json());
+    expect(pair.tokenType).toBe('Bearer');
+    expect(pair.user).toMatchObject({
       email: 'ana@panter.test',
       roles: ['PASSENGER'],
       activeMode: 'passenger',
