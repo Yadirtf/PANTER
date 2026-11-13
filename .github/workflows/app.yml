@@ -58,7 +58,7 @@ jobs:
           fi
           [ "$ok" = true ]
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Historial completo y tags para el changelog desde el tag app-v* anterior.
           fetch-depth: 0

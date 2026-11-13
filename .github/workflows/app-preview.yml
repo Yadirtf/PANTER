@@ -30,7 +30,7 @@ jobs:
       # Marcador hasta que exista la variable EXPO_PUBLIC_API_URL del Environment staging.
       DEFAULT_STAGING_API_URL: https://panter-api-staging.example.workers.dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Calcular versión y API
         id: version
@@ -61,7 +61,7 @@ jobs:
           key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
           key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: panter-staging-${{ steps.version.outputs.version }}
           path: |
