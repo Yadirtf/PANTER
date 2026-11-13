@@ -36,8 +36,8 @@
         "APP_VERSION": "dev",
         "GIT_COMMIT": "dev",
       },
-      // MARCADOR: ID real del namespace KV de staging (pendiente de cuenta de Cloudflare).
-      "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000001" }],
+      // Namespace KV `panter-kv-staging`.
+      "kv_namespaces": [{ "binding": "KV", "id": "94905b6be92b45a386fe5f4e8eeb9614" }],
       "r2_buckets": [{ "binding": "DOCUMENTS", "bucket_name": "panter-documents-staging" }],
       "queues": {
         "producers": [{ "binding": "EVENTS", "queue": "panter-events-staging" }],
