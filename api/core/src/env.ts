@@ -43,6 +43,10 @@ export interface Env {
    * se versiona en wrangler.jsonc.
    */
   OTP_DEV_ECHO_ALLOWLIST?: string;
+
+  // --- Login OTP (HU-101) ---
+  /** Secreto: llave del HMAC-SHA256 de los códigos y correos en KV (`openssl rand -hex 32`). */
+  OTP_SECRET?: string;
 }
 
 /** Tipo de contexto de Hono para toda la app. */

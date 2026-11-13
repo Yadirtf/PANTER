@@ -20,6 +20,12 @@ export function zodIssues(error: ZodError): ValidationIssue[] {
 }
 
 function respond(c: Context, err: AppError): Response {
+  // Límites de frecuencia: `details.retryAfterSeconds` también va en la cabecera Retry-After.
+  const retryAfter = (err.details as { retryAfterSeconds?: unknown } | undefined)
+    ?.retryAfterSeconds;
+  if (err.status === 429 && typeof retryAfter === 'number') {
+    c.header('Retry-After', String(retryAfter));
+  }
   return c.json(toErrorBody(err), err.status as ContentfulStatusCode);
 }
 
