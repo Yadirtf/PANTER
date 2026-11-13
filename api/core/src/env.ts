@@ -6,6 +6,8 @@ export interface Env {
   ENVIRONMENT: string;
   APP_VERSION: string;
   GIT_COMMIT: string;
+  /** Orígenes web autorizados por CORS, separados por comas (p. ej. la URL de panter-web). */
+  CORS_ORIGINS: string;
   /** Caché, rate limiting, OTP y refresh tokens. */
   KV: KVNamespace;
   /** Documentos de conductores (privado, URLs firmadas). */

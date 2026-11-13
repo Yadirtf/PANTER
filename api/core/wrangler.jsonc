@@ -18,6 +18,8 @@
     "ENVIRONMENT": "development",
     "APP_VERSION": "dev",
     "GIT_COMMIT": "dev",
+    // Orígenes web autorizados por CORS (separados por comas). Local: next dev.
+    "CORS_ORIGINS": "http://localhost:3000",
   },
   // MARCADOR: reemplazar por el ID real (`wrangler kv namespace create panter-kv`).
   // En `wrangler dev` y en las pruebas el KV es simulado por Miniflare y el ID no importa.
@@ -35,6 +37,7 @@
         "ENVIRONMENT": "staging",
         "APP_VERSION": "dev",
         "GIT_COMMIT": "dev",
+        "CORS_ORIGINS": "https://panter-web-staging.panter.workers.dev,http://localhost:3000",
       },
       // Namespace KV `panter-kv-staging`.
       "kv_namespaces": [{ "binding": "KV", "id": "94905b6be92b45a386fe5f4e8eeb9614" }],
@@ -50,6 +53,7 @@
         "ENVIRONMENT": "production",
         "APP_VERSION": "dev",
         "GIT_COMMIT": "dev",
+        "CORS_ORIGINS": "https://panter-web.panter.workers.dev",
       },
       // MARCADOR: ID real del namespace KV de producción (pendiente de cuenta de Cloudflare).
       "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000002" }],
