@@ -135,7 +135,7 @@ Los Durable Objects de api-realtime no se crean a mano: `wrangler deploy` aplica
 
 | Entorno         | Marcador actual                    | Reemplazar por                     |
 | --------------- | ---------------------------------- | ---------------------------------- |
-| `env.staging`   | `00000000000000000000000000000001` | id de `panter-kv-staging`          |
+| `env.staging`   | ~~`00000000000000000000000000000001`~~ | ✅ reemplazado por el id de `panter-kv-staging` |
 | `env.production`| `00000000000000000000000000000002` | id de `panter-kv`                  |
 
 El de nivel superior (`…0000`) se queda: es el KV local de `wrangler dev` y de las pruebas.
