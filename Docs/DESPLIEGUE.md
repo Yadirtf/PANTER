@@ -4,6 +4,9 @@ Cómo se valida y despliega PANTER (Especificación §10). Este documento es la 
 del dueño de las cuentas: hasta que los secretos existan, los workflows de despliegue terminan
 en verde con el aviso _"Despliegue omitido"_ y no publican nada.
 
+> ¿Primera vez? Sigue la guía paso a paso [GUIA-DESPLIEGUE.md](GUIA-DESPLIEGUE.md). Este
+> documento es la referencia técnica.
+
 ## 1. Workflows
 
 | Workflow           | Disparador                                                         | Qué hace                                                                                      |
