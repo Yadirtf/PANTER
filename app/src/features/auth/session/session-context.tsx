@@ -15,7 +15,8 @@ export function SessionProvider({
   manager?: SessionManager;
 }) {
   useEffect(() => {
-    void manager.load();
+    // Lee la sesión guardada y refresca roles y modo con GET /me (HU-106).
+    void manager.start();
   }, [manager]);
 
   return <SessionContext.Provider value={manager}>{children}</SessionContext.Provider>;

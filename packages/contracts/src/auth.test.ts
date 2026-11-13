@@ -6,6 +6,7 @@ import {
   OtpCodeSchema,
   OtpVerifyBodySchema,
   SwitchModeBodySchema,
+  SwitchModeResponseSchema,
   TokenPairResponseSchema,
 } from './auth';
 import { ApiErrorBodySchema } from './errors';
@@ -45,6 +46,11 @@ describe('contratos de identidad', () => {
       user: me,
     };
     expect(TokenPairResponseSchema.parse(pair)).toEqual(pair);
+    // POST /me/mode responde un par nuevo con el modo pedido.
+    expect(
+      SwitchModeResponseSchema.parse({ ...pair, user: { ...me, activeMode: 'driver' } }).user
+        .activeMode,
+    ).toBe('driver');
   });
 
   it('claims del access token', () => {

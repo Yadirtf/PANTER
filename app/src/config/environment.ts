@@ -32,29 +32,33 @@ function parseAppEnv(value: string | undefined): AppEnv {
   return trimmed;
 }
 
+/** Valida una URL http(s) de `name` y la devuelve sin barra final. */
+function parseUrl(name: string, trimmed: string, appEnv: AppEnv): string {
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error(`${name} no es una URL válida: "${trimmed}".`);
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error(`${name} debe usar http o https: "${trimmed}".`);
+  }
+  if (appEnv !== 'development' && url.protocol !== 'https:') {
+    throw new Error(`${name} debe usar https en ${appEnv}: "${trimmed}".`);
+  }
+
+  // Sin barra final para poder concatenar rutas (`${apiUrl}/auth/otp/request`).
+  return trimmed.replace(/\/+$/, '');
+}
+
 function parseApiUrl(value: string | undefined, appEnv: AppEnv): string {
   const trimmed = value?.trim();
   if (!trimmed) {
     if (appEnv === 'development') return DEFAULT_DEV_API_URL;
     throw new Error(`EXPO_PUBLIC_API_URL es obligatoria para APP_ENV=${appEnv}.`);
   }
-
-  let url: URL;
-  try {
-    url = new URL(trimmed);
-  } catch {
-    throw new Error(`EXPO_PUBLIC_API_URL no es una URL válida: "${trimmed}".`);
-  }
-
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw new Error(`EXPO_PUBLIC_API_URL debe usar http o https: "${trimmed}".`);
-  }
-  if (appEnv !== 'development' && url.protocol !== 'https:') {
-    throw new Error(`EXPO_PUBLIC_API_URL debe usar https en ${appEnv}: "${trimmed}".`);
-  }
-
-  // Sin barra final para poder concatenar rutas (`${apiUrl}/auth/otp/request`).
-  return trimmed.replace(/\/+$/, '');
+  return parseUrl('EXPO_PUBLIC_API_URL', trimmed, appEnv);
 }
 
 /** Valida y normaliza las variables de entorno. Lanza un error descriptivo si son inválidas. */
@@ -66,4 +70,27 @@ export function resolveEnvironment(raw: RawEnvironment): AppEnvironment {
 /** Sufijo del identificador Android para instalar varios perfiles en el mismo teléfono. */
 export function applicationIdSuffix(appEnv: AppEnv): string {
   return appEnv === 'production' ? '' : `.${appEnv === 'staging' ? 'staging' : 'dev'}`;
+}
+
+/** URL de la web usada en development cuando no se define EXPO_PUBLIC_WEB_URL (next dev). */
+export const DEFAULT_DEV_WEB_URL = 'http://localhost:3000';
+
+/** Worker de la API en workers.dev: `panter-api[-staging].<subdominio>.workers.dev`. */
+const WORKERS_DEV_API = /^panter-api(-staging)?\.([a-z0-9-]+\.workers\.dev)$/i;
+
+/**
+ * URL de la web para el aviso "Usa la web" a los usuarios de personal (HU-106).
+ * EXPO_PUBLIC_WEB_URL es opcional: si falta, en development se usa `next dev` y en staging o
+ * production se deduce del Worker de la API en workers.dev (`panter-api-staging` →
+ * `panter-web-staging`). Si no se puede deducir, devuelve null y la app muestra un texto sin URL.
+ */
+export function resolveWebUrl(
+  raw: string | undefined,
+  { appEnv, apiUrl }: AppEnvironment,
+): string | null {
+  const trimmed = raw?.trim();
+  if (trimmed) return parseUrl('EXPO_PUBLIC_WEB_URL', trimmed, appEnv);
+  if (appEnv === 'development') return DEFAULT_DEV_WEB_URL;
+  const match = WORKERS_DEV_API.exec(new URL(apiUrl).hostname);
+  return match ? `https://panter-web${match[1] ?? ''}.${match[2]}` : null;
 }

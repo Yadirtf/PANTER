@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applicationIdSuffix, DEFAULT_DEV_API_URL, resolveEnvironment } from './environment';
+import {
+  applicationIdSuffix,
+  DEFAULT_DEV_API_URL,
+  DEFAULT_DEV_WEB_URL,
+  resolveEnvironment,
+  resolveWebUrl,
+} from './environment';
 
 describe('resolveEnvironment', () => {
   it('usa development y la API local por defecto', () => {
@@ -49,5 +55,40 @@ describe('applicationIdSuffix', () => {
     expect(applicationIdSuffix('production')).toBe('');
     expect(applicationIdSuffix('staging')).toBe('.staging');
     expect(applicationIdSuffix('development')).toBe('.dev');
+  });
+});
+
+describe('resolveWebUrl', () => {
+  const staging = {
+    appEnv: 'staging',
+    apiUrl: 'https://panter-api-staging.equipo.workers.dev',
+  } as const;
+  const production = {
+    appEnv: 'production',
+    apiUrl: 'https://panter-api.equipo.workers.dev',
+  } as const;
+
+  it('usa EXPO_PUBLIC_WEB_URL si está definida', () => {
+    expect(resolveWebUrl('https://panter.example.com/', production)).toBe(
+      'https://panter.example.com',
+    );
+    expect(() => resolveWebUrl('http://panter.example.com', production)).toThrow(/https/);
+  });
+
+  it('en development usa next dev', () => {
+    expect(resolveWebUrl(undefined, { appEnv: 'development', apiUrl: DEFAULT_DEV_API_URL })).toBe(
+      DEFAULT_DEV_WEB_URL,
+    );
+  });
+
+  it('deduce la web del Worker de la API en workers.dev', () => {
+    expect(resolveWebUrl(' ', staging)).toBe('https://panter-web-staging.equipo.workers.dev');
+    expect(resolveWebUrl(undefined, production)).toBe('https://panter-web.equipo.workers.dev');
+  });
+
+  it('sin forma de deducirla devuelve null', () => {
+    expect(
+      resolveWebUrl(undefined, { appEnv: 'production', apiUrl: 'https://api.example.com' }),
+    ).toBeNull();
   });
 });
