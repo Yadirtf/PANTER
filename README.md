@@ -4,6 +4,7 @@ Plataforma de movilidad y ecoturismo de Villagarzón (Putumayo).
 
 - Especificación: [`Docs/ESPECIFICACION.md`](Docs/ESPECIFICACION.md)
 - Backlog: [`Docs/BACKLOG.md`](Docs/BACKLOG.md) (cargado como issues con `scripts/crear_issues.sh`)
+- **Desplegar paso a paso: [`Docs/GUIA-DESPLIEGUE.md`](Docs/GUIA-DESPLIEGUE.md)** (referencia técnica en [`Docs/DESPLIEGUE.md`](Docs/DESPLIEGUE.md))
 - Decisiones de arquitectura: [`Docs/adr/`](Docs/adr/)
 
 ## Estructura
