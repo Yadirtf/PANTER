@@ -110,3 +110,22 @@ PANTER_UPLOAD_STORE_FILE=~/panter-keys/panter-upload.jks PANTER_UPLOAD_KEY_ALIAS
 ```
 
 Pruebas de los scripts de release: `bash scripts/probar_app_release.sh`.
+
+## Código (desarrolladores)
+
+Organizado por funcionalidad en `src/`:
+
+| Carpeta          | Contenido                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------- |
+| `app/`           | Rutas de Expo Router por grupo: `(auth)`, `(passenger)`, `(driver)`, `(onboarding)` |
+| `shared/api/`    | Cliente HTTP tipado (`fetch` + esquemas Zod de `@panter/contracts`) y mensajes      |
+| `features/auth/` | Login OTP, store de sesión y almacenamiento en `expo-secure-store`                  |
+| `navigation/`    | `resolveRootGroup`: grupo de rutas según la sesión                                  |
+
+- Todo error llega a la interfaz como `{ code, message }`; sin red el código es
+  `NETWORK_ERROR`. Los textos en español están en `shared/api/error-messages.ts`.
+- `SessionManager` (TypeScript puro) guarda refresh y access token en SecureStore. Antes de
+  que venza el access token, o ante un 401 `TOKEN_EXPIRED`, llama una sola vez a
+  `POST /auth/refresh` aunque haya varias peticiones a la vez, y reintenta. Si el refresh
+  responde `REFRESH_TOKEN_INVALID`, cierra la sesión y la app vuelve al login.
+- Las pruebas (`pnpm test`) simulan la API con un `fetch` falso (`src/test/fake-api.ts`).
