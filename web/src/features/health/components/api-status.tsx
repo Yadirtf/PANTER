@@ -13,8 +13,11 @@ export function ApiStatus() {
     label = `API no disponible (${error.code})`;
     tone = 'bg-red-500';
   } else if (!isPending && data) {
-    label = `API: ${data.status}`;
-    tone = 'bg-emerald-500';
+    const realtimeOk = data.realtime.status === 'ok';
+    label = realtimeOk
+      ? `API en línea · v${data.version} (${data.environment})`
+      : `API en línea · tiempo real no disponible (${data.environment})`;
+    tone = realtimeOk ? 'bg-emerald-500' : 'bg-amber-400';
   }
 
   return (
