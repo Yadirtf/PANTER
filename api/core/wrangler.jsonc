@@ -20,6 +20,12 @@
     "GIT_COMMIT": "dev",
     // Orígenes web autorizados por CORS (separados por comas). Local: next dev.
     "CORS_ORIGINS": "http://localhost:3000",
+    // Correo (HU-102). Secretos aparte: BREVO_API_KEY, RESEND_API_KEY (Docs/GUIA-DESPLIEGUE.md).
+    "EMAIL_PROVIDER": "brevo",
+    "EMAIL_FROM": "",
+    "EMAIL_FROM_NAME": "PANTER",
+    // OTP_DEV_ECHO solo tiene efecto con ENVIRONMENT=staging (y la lista OTP_DEV_ECHO_ALLOWLIST).
+    "OTP_DEV_ECHO": "false",
   },
   // MARCADOR: reemplazar por el ID real (`wrangler kv namespace create panter-kv`).
   // En `wrangler dev` y en las pruebas el KV es simulado por Miniflare y el ID no importa.
@@ -38,6 +44,13 @@
         "APP_VERSION": "dev",
         "GIT_COMMIT": "dev",
         "CORS_ORIGINS": "https://panter-web-staging.panter.workers.dev,http://localhost:3000",
+        "EMAIL_PROVIDER": "brevo",
+        // MARCADOR: correo verificado como remitente en Brevo (Senders). Vacío = el login falla
+        // con un error claro en los logs; /health sigue funcionando.
+        "EMAIL_FROM": "",
+        "EMAIL_FROM_NAME": "PANTER",
+        // Eco del OTP en los logs para los correos del secreto OTP_DEV_ECHO_ALLOWLIST.
+        "OTP_DEV_ECHO": "true",
       },
       // Namespace KV `panter-kv-staging`.
       "kv_namespaces": [{ "binding": "KV", "id": "94905b6be92b45a386fe5f4e8eeb9614" }],
@@ -54,6 +67,12 @@
         "APP_VERSION": "dev",
         "GIT_COMMIT": "dev",
         "CORS_ORIGINS": "https://panter-web.panter.workers.dev",
+        "EMAIL_PROVIDER": "brevo",
+        // MARCADOR: remitente de producción (con dominio propio, no-reply@mail.<dominio>).
+        "EMAIL_FROM": "",
+        "EMAIL_FROM_NAME": "PANTER",
+        // Imposible en production aunque valga "true": el código exige ENVIRONMENT=staging.
+        "OTP_DEV_ECHO": "false",
       },
       // MARCADOR: ID real del namespace KV de producción (pendiente de cuenta de Cloudflare).
       "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000002" }],
