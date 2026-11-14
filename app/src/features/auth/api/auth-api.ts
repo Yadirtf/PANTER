@@ -9,6 +9,9 @@ import {
   type OtpRequestResponse,
   type OtpVerifyBody,
   type RefreshBody,
+  type SwitchModeBody,
+  SwitchModeResponseSchema,
+  type SwitchModeResponse,
   TokenPairResponseSchema,
   type TokenPairResponse,
 } from '@panter/contracts';
@@ -21,6 +24,8 @@ export interface AuthApi {
   /** `accessToken` se envía si está disponible, sin intentar refrescarlo. */
   logout(body: LogoutBody, accessToken?: string): Promise<void>;
   getMe(): Promise<MeResponse>;
+  /** POST /me/mode: emite un par de tokens nuevo con el modo pedido. */
+  switchMode(body: SwitchModeBody): Promise<SwitchModeResponse>;
 }
 
 export function createAuthApi(http: HttpClient): AuthApi {
@@ -38,5 +43,12 @@ export function createAuthApi(http: HttpClient): AuthApi {
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       }),
     getMe: () => http.request({ path: AuthRoutes.ME, auth: true, schema: MeResponseSchema }),
+    switchMode: (body) =>
+      http.request({
+        path: AuthRoutes.ME_MODE,
+        body,
+        auth: true,
+        schema: SwitchModeResponseSchema,
+      }),
   };
 }

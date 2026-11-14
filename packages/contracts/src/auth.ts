@@ -98,6 +98,9 @@ export type LogoutBody = RefreshBody;
 // POST /me/mode
 export const SwitchModeBodySchema = z.object({ mode: ActiveModeSchema });
 export type SwitchModeBody = z.infer<typeof SwitchModeBodySchema>;
+/** Respuesta 200: cambiar de modo emite un par de tokens nuevo con el `activeMode` pedido (§5.3). */
+export const SwitchModeResponseSchema = TokenPairResponseSchema;
+export type SwitchModeResponse = TokenPairResponse;
 
 /**
  * Claims del access token (JWT RS256, §5.3 y §7.4). Los clientes pueden decodificarlo para
