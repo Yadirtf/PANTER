@@ -1,3 +1,5 @@
+import type { Actor } from './modules/auth/domain/actor';
+
 /**
  * Bindings y variables del Worker panter-api (ver wrangler.jsonc).
  * Declarados a mano para no versionar el archivo generado por `wrangler types`.
@@ -23,9 +25,45 @@ export interface Env {
    * endpoints sin base de datos (p. ej. /health) funcionan sin él; `createDb` falla si falta.
    */
   DATABASE_URL?: string;
+
+  // --- Correo (HU-102). Ver Docs/GUIA-DESPLIEGUE.md → "Secretos y variables de M1 (login)". ---
+  /** Var: proveedor principal, "brevo" (por defecto) o "resend". El otro queda de respaldo. */
+  EMAIL_PROVIDER?: string;
+  /** Var: remitente. Con Brevo sin dominio, el correo verificado en Brevo → Senders. */
+  EMAIL_FROM?: string;
+  /** Var: nombre visible del remitente ("PANTER"). */
+  EMAIL_FROM_NAME?: string;
+  /** Secreto: API key de Brevo (SMTP & API → API Keys). */
+  BREVO_API_KEY?: string;
+  /** Secreto: API key de Resend (para cuando haya dominio propio). */
+  RESEND_API_KEY?: string;
+  /** Var: "true" activa el eco del OTP en logs. Solo tiene efecto si ENVIRONMENT=staging. */
+  OTP_DEV_ECHO?: string;
+  /**
+   * Correos de testers con eco del OTP, separados por comas. Como el repositorio es público,
+   * se carga como secreto (`wrangler secret put OTP_DEV_ECHO_ALLOWLIST --env staging`) y no
+   * se versiona en wrangler.jsonc.
+   */
+  OTP_DEV_ECHO_ALLOWLIST?: string;
+
+  // --- Login OTP (HU-101) ---
+  /** Secreto: llave del HMAC-SHA256 de los códigos y correos en KV (`openssl rand -hex 32`). */
+  OTP_SECRET?: string;
+
+  // --- Tokens JWT (HU-103). Generar con scripts/generar_llaves_jwt.sh. ---
+  /** Secreto: llave privada RSA 2048 en PEM PKCS8 ("-----BEGIN PRIVATE KEY-----"). */
+  JWT_PRIVATE_KEY?: string;
+  /** Secreto: llave pública en PEM SPKI ("-----BEGIN PUBLIC KEY-----"). Se publica en el JWKS. */
+  JWT_PUBLIC_KEY?: string;
+  /** Var: identificador de la llave (`kid` del header y del JWKS). Cambiarlo al rotar llaves. */
+  JWT_KID?: string;
 }
 
 /** Tipo de contexto de Hono para toda la app. */
 export interface AppBindings {
   Bindings: Env;
+  Variables: {
+    /** Lo pone `requireAuth` (modules/auth/http/require-auth.ts). */
+    actor?: Actor;
+  };
 }

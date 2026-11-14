@@ -25,6 +25,7 @@ una APK de prueba instalable.
 | Cloudflare → Worker api-core    | Secreto `DATABASE_URL` en tiempo de ejecución                           | 6    |
 | Navegador                       | Verificar `/health`, `/openapi.json` y la web                           | 7    |
 | Tu computador + GitHub          | Llave de firma de la APK y APK de staging                               | 8    |
+| Brevo + Cloudflare → Worker     | Secretos y variables del login (M1)                                     | M1   |
 
 **¿Y Firebase?** No se usa por ahora. La arquitectura v1.1 no usa Firebase para datos ni para
 autenticación (eso lo hacen Neon y el OTP por correo). Solo se necesitará en el hito M5
@@ -177,8 +178,8 @@ usa para migrar):
 3. **Deploy** / guardar.
 
 Los secretos del Worker se conservan entre despliegues: este paso se hace una sola vez por
-ambiente. Más adelante se agregarán así las llaves JWT y de correo (M1); te diré cuáles en
-cada historia.
+ambiente. Los del login (correo, OTP y llaves JWT) se cargan igual; ver
+[Secretos y variables de M1 (login)](#secretos-y-variables-de-m1-login).
 
 ### 6.3 Deploy web
 
@@ -253,6 +254,151 @@ Con la llave cargada, **App preview** firma con ella y deja de mostrar el aviso.
 Se hace en producción, después de pasar `develop` a `main` (fuera de esta guía de staging).
 Requiere el Environment `production` con `EXPO_PUBLIC_API_URL`. Los pasos están en
 [app/README.md](../app/README.md#versiones-y-releases-responsables).
+
+## Secretos y variables de M1 (login)
+
+El login por código al correo (HU-101 a HU-103) necesita estos valores en el Worker
+`panter-api-staging` (y luego en `panter-api` de producción). Ninguno es necesario para
+`/health`: si falta alguno, el endpoint que lo usa responde `500 INTERNAL_ERROR` y el log del
+Worker dice exactamente qué falta y cómo cargarlo.
+
+| Nombre                   | Tipo    | Dónde se carga                              | Para qué                                         |
+| ------------------------ | ------- | ------------------------------------------- | ------------------------------------------------ |
+| `OTP_SECRET`             | Secreto | Cloudflare (o `wrangler secret put`)        | Llave del hash de los códigos en KV              |
+| `JWT_PRIVATE_KEY`        | Secreto | Cloudflare (o `wrangler secret put`)        | Firmar los access tokens (RS256)                 |
+| `JWT_PUBLIC_KEY`         | Secreto | Cloudflare (o `wrangler secret put`)        | Verificarlos; se publica en el JWKS              |
+| `BREVO_API_KEY`          | Secreto | Cloudflare (o `wrangler secret put`)        | Enviar el correo con el código (Brevo)           |
+| `RESEND_API_KEY`         | Secreto | Cloudflare (opcional, cuando haya dominio)  | Respaldo automático (Resend)                     |
+| `OTP_DEV_ECHO_ALLOWLIST` | Secreto | Cloudflare, solo staging (opcional)         | Correos de testers con el código en los logs     |
+| `EMAIL_PROVIDER`         | Var     | `api/core/wrangler.jsonc` (ya viene)        | `brevo` (por defecto) o `resend`                 |
+| `EMAIL_FROM`             | Var     | `api/core/wrangler.jsonc` (**hay que poner**) | Remitente verificado                           |
+| `EMAIL_FROM_NAME`        | Var     | `api/core/wrangler.jsonc` (ya viene)        | Nombre visible: `PANTER`                         |
+| `OTP_DEV_ECHO`           | Var     | `api/core/wrangler.jsonc` (ya viene)        | `true` en staging, `false` en producción         |
+| `JWT_KID`                | Var     | `api/core/wrangler.jsonc` (ya viene)        | Identificador de la llave (`kid`)                |
+
+**Cómo cargar un secreto** (cualquiera de las dos formas):
+
+- **Navegador:** Cloudflare → **Workers & Pages** → `panter-api-staging` → **Settings** →
+  **Variables and Secrets** → **Add** → tipo **Secret** → nombre y valor → **Deploy**.
+- **Terminal** (desde `api/core`, con sesión de `wrangler login`):
+  `pnpm exec wrangler secret put NOMBRE --env staging` y pega el valor cuando lo pida.
+
+Los secretos se conservan entre despliegues. Las **vars** no se cargan en Cloudflare: viven en
+`api/core/wrangler.jsonc` y cada despliegue las sobrescribe con lo que diga ese archivo (por
+eso no sirve editarlas en el dashboard). Para cambiarlas se edita el archivo en un PR.
+
+### M1.1 · Brevo: remitente verificado y API key
+
+Sin dominio propio, el correo sale desde un correo personal verificado en Brevo
+(especificación §7.2). Usa una cuenta de Gmail **del proyecto**, no la personal.
+
+1. Crea la cuenta gratuita en [brevo.com](https://www.brevo.com) (300 correos al día). Completa
+   el perfil (nombre, empresa, dirección): Brevo puede dejar la cuenta "en validación" y no
+   enviar nada hasta revisarla.
+2. **Verificar el remitente:** menú de la cuenta (arriba a la derecha) → **Senders, Domains &
+   Dedicated IPs** → pestaña **Senders** → **Add a sender**. Nombre `PANTER`, correo: el Gmail
+   del proyecto → **Save**. Brevo envía un correo a esa dirección: ábrelo y confirma (enlace o
+   código de 6 dígitos). Debe quedar con estado **Verified**. Brevo puede avisar que los
+   correos gratuitos (Gmail) entregan peor: es esperable hasta tener dominio propio (§7.3).
+3. **Crear la API key:** menú de la cuenta → **SMTP & API** → pestaña **API Keys** →
+   **Generate a new API key** → nombre `panter-api-staging` → copia el valor (`xkeysib-…`;
+   solo se muestra una vez).
+4. **Permitir llamadas desde Cloudflare:** menú de la cuenta → **Security** → **Authorised
+   IPs**. Si el bloqueo de IP desconocidas está activo, **desactívalo**: los Workers salen por
+   IP variables y Brevo rechazaría el envío con `401 unauthorized`.
+5. Carga el secreto `BREVO_API_KEY` en `panter-api-staging` (ver arriba).
+6. Pon el Gmail verificado en `EMAIL_FROM` de `env.staging.vars` en `api/core/wrangler.jsonc`
+   (hoy está vacío, marcado `MARCADOR`) y fusiona el PR. **Envíamelo y abro yo el PR** si
+   prefieres (no es un secreto: aparece en todos los correos).
+
+Comprobación (cuando esté HU-101, el endpoint de login): pide un código desde la web o con
+`curl -X POST https://panter-api-staging.<subdominio>.workers.dev/auth/otp/request -H 'content-type: application/json' -d '{"email":"tu-correo@gmail.com"}'`.
+Debe responder `202` y el correo llegar con el asunto **"Tu código PANTER es 123456"** (con tu
+código). Si no llega, revisa **Spam** o **Promociones**, márcalo como "No es spam" y agrega el
+remitente a tus contactos. En Brevo → **Transactional** → **Logs** se ve cada envío.
+
+**Resend (después, con dominio propio):** cuando exista `mail.<dominio>` verificado en Resend
+(SPF/DKIM), crea la API key en Resend → **API Keys** → **Create API key** (permiso _Sending
+access_) y cárgala como `RESEND_API_KEY`. Desde ese momento Resend queda de respaldo automático
+de Brevo (si Brevo falla o agota su cuota diaria con 429). Para que Resend sea el principal,
+cambia `EMAIL_PROVIDER` a `resend` y `EMAIL_FROM` a la dirección del dominio en
+`wrangler.jsonc`. Resend no envía desde Gmail: no cargues `RESEND_API_KEY` antes de tener el
+dominio, o los respaldos fallarán.
+
+### M1.2 · OTP_DEV_ECHO en staging (código en los logs)
+
+Para probar el login aunque el correo tarde o caiga en spam, en staging la API también puede
+escribir el código en los logs del Worker, **solo** para los correos de una lista blanca de
+testers. En producción es imposible: el código exige `ENVIRONMENT=staging` aunque
+`OTP_DEV_ECHO` valga `true` (hay una prueba automática que lo verifica).
+
+1. `OTP_DEV_ECHO` ya vale `"true"` en `env.staging` de `wrangler.jsonc` (y `"false"` en
+   producción). Para apagarlo del todo, cámbialo a `"false"` en un PR.
+2. Carga el secreto `OTP_DEV_ECHO_ALLOWLIST` en `panter-api-staging` con los correos de los
+   testers separados por comas, por ejemplo `ana@gmail.com,beto@gmail.com`. Va como secreto
+   (y no en `wrangler.jsonc`) porque el repositorio es público y son correos personales.
+3. Pide un código con uno de esos correos. En Cloudflare → `panter-api-staging` → **Logs**
+   (o **Observability** → **Events**), busca `otp_dev_echo`: verás
+   `{ "event": "otp_dev_echo", "to": "ana@gmail.com", "code": "123456" }`. El correo se envía
+   igual; si Brevo falla, el tester puede seguir con el código del log
+   (evento `otp_email_failed_echoed`).
+4. En vivo desde la terminal: `pnpm exec wrangler tail panter-api-staging --search otp_dev_echo`.
+
+### M1.3 · OTP_SECRET (hash de los códigos)
+
+La API nunca guarda el código ni el correo en claro: en KV solo queda su HMAC-SHA256 con esta
+llave. Es un valor aleatorio distinto por ambiente.
+
+1. Genéralo en tu computador: `openssl rand -hex 32` (64 caracteres hexadecimales). Sin
+   terminal, sirve cualquier generador de contraseñas de 64 caracteres; el mínimo aceptado son
+   32.
+2. Cárgalo como secreto `OTP_SECRET` en `panter-api-staging` (y otro distinto en `panter-api`).
+3. Si lo cambias, los códigos pendientes dejan de servir (los usuarios piden uno nuevo) y se
+   reinicia el límite de solicitudes. No afecta las cuentas.
+
+Límites del OTP (especificación §7.4): 3 códigos por correo cada 15 minutos, 5 intentos por
+código y 5 minutos de vigencia. Se guardan en KV, que es **eventualmente consistente** (un
+cambio puede tardar hasta ~60 s en verse en otras ubicaciones de Cloudflare): en el piloto se
+acepta que, con peticiones casi simultáneas desde lugares distintos, el límite se exceda por
+poco.
+
+### M1.4 · Llaves JWT (sesión)
+
+Al verificar el código, la API emite un access token JWT RS256 de 15 minutos y un refresh token
+de 30 días. La web verifica el access token con la llave pública publicada en
+`GET /.well-known/jwks.json`.
+
+1. En tu computador (necesita `openssl`, que traen macOS, Linux y Git Bash en Windows), desde la
+   raíz del repositorio:
+
+   ```bash
+   scripts/generar_llaves_jwt.sh staging
+   ```
+
+   Crea `~/panter-keys/jwt-staging-<fecha>/` con `jwt-private.pem` (PKCS8), `jwt-public.pem`
+   (SPKI) y `kid.txt`, e imprime los comandos exactos para el paso 2.
+2. Carga los dos secretos en `panter-api-staging`:
+   - **Terminal** (desde `api/core`):
+     `pnpm exec wrangler secret put JWT_PRIVATE_KEY --env staging < ~/panter-keys/jwt-staging-<fecha>/jwt-private.pem`
+     y lo mismo con `JWT_PUBLIC_KEY` y `jwt-public.pem`.
+   - **Navegador:** Cloudflare → `panter-api-staging` → **Settings** → **Variables and
+     Secrets** → **Add** → **Secret**. Pega el contenido **completo** de cada archivo, incluidas
+     las líneas `-----BEGIN …-----` y `-----END …-----`. Si el campo junta todo en una línea no
+     pasa nada: la API reconstruye el PEM.
+3. `JWT_KID` ya vale `panter-staging-1` en `wrangler.jsonc`. La primera vez puedes dejarlo
+   así. **Al rotar las llaves usa siempre un kid nuevo** (el script sugiere uno con la fecha):
+   la web guarda el JWKS en caché hasta 10 minutos y elige la llave por kid.
+4. Comprueba que `https://panter-api-staging.<subdominio>.workers.dev/.well-known/jwks.json`
+   muestre `"kid": "panter-staging-1"`.
+5. Borra la carpeta `~/panter-keys/jwt-staging-<fecha>` (o guárdala cifrada). Para producción,
+   repite con `scripts/generar_llaves_jwt.sh production`, que genera llaves **distintas**.
+
+Qué pasa al rotar: los access tokens vigentes dejan de servir (duran 15 minutos y la app los
+renueva sola). Los refresh tokens siguen funcionando, así que nadie tiene que volver a ingresar.
+
+Sesiones: cada uso de `POST /auth/refresh` revoca el refresh token anterior. Si alguien
+reutiliza uno ya usado (posible robo), la API revoca toda esa sesión. `POST /auth/logout` solo
+necesita el refresh token. En KV se guarda el SHA-256 del refresh token, nunca el token.
 
 ## Variables de entorno en tu computador (desarrollo local, opcional)
 
