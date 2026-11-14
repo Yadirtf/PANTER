@@ -42,6 +42,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-router',
       // Development build: MapLibre RN (HU-303) no funciona en Expo Go.
       'expo-dev-client',
+      // Sesión en el Keystore (HU-105); excluye los datos cifrados de los backups de Android,
+      // que no se podrían descifrar al restaurarlos en otro teléfono.
+      'expo-secure-store',
     ],
     experiments: {
       typedRoutes: true,

@@ -1,11 +1,14 @@
-// Grupo de rutas al que el layout raíz deja entrar.
-// Por ahora no hay sesión, así que siempre es (auth). HU-106 implementará la regla real
-// (sección 5 de la especificación): sin sesión → (auth); modo conductor sin aprobar →
-// (onboarding); modo conductor aprobado → (driver); en otro caso → (passenger).
+// Grupo de rutas al que el layout raíz deja entrar según la sesión.
+// HU-105: sin sesión (o cargándola) → (auth); con sesión → (passenger).
+// HU-106 implementará la regla completa por rol y modo activo (sección 5.4).
+import type { SessionState } from '../features/auth/session/session-manager';
 
 export const ROOT_GROUPS = ['(auth)', '(onboarding)', '(passenger)', '(driver)'] as const;
 export type RootGroup = (typeof ROOT_GROUPS)[number];
 
-export function resolveRootGroup(): RootGroup {
-  return '(auth)';
+export type RootSession = Pick<SessionState, 'status' | 'user' | 'activeMode'>;
+
+export function resolveRootGroup(session: RootSession): RootGroup {
+  if (session.status !== 'signedIn' || !session.user) return '(auth)';
+  return '(passenger)';
 }
