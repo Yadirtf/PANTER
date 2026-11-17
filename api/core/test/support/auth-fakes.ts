@@ -1,10 +1,14 @@
 // Dobles en memoria de los puertos de auth. Sin Workers, KV ni base de datos.
 import { Role, type UserStatus } from '@panter/contracts';
 import type {
+  AccessTokenSigner,
   OtpHasher,
   OtpRecord,
   OtpRequestWindow,
   OtpStore,
+  RefreshRecord,
+  RefreshTokenCodec,
+  RefreshTokenStore,
   UserRepository,
 } from '../../src/modules/auth/application/ports';
 import type { User } from '../../src/modules/auth/domain/user';
@@ -66,6 +70,37 @@ export class MemoryUserRepository implements UserRepository {
     return `00000000-0000-4000-8000-${String(this.seq).padStart(12, '0')}`;
   }
 }
+
+export class MemoryRefreshStore implements RefreshTokenStore {
+  readonly records = new Map<string, RefreshRecord>();
+  readonly revoked = new Map<string, number>();
+  async get(hash: string) {
+    return this.records.get(hash) ?? null;
+  }
+  async put(hash: string, record: RefreshRecord) {
+    this.records.set(hash, { ...record });
+  }
+  async delete(hash: string) {
+    this.records.delete(hash);
+  }
+  async revokeFamily(familyId: string, until: number) {
+    this.revoked.set(familyId, until);
+  }
+  async isFamilyRevoked(familyId: string) {
+    return this.revoked.has(familyId);
+  }
+}
+
+/** Codec simulado: tokens "rt-1", "rt-2", … y hash legible. */
+export function fakeCodec(): RefreshTokenCodec {
+  let n = 0;
+  return { generate: () => `rt-${++n}`, hash: async (token) => `sha(${token})` };
+}
+
+/** Firmador simulado: el "token" es el JSON de los claims. */
+export const fakeSigner: AccessTokenSigner = {
+  sign: async (subject) => ({ token: `at:${JSON.stringify(subject)}`, expiresIn: 900 }),
+};
 
 /** Reloj manual. */
 export function manualClock(start = Date.UTC(2026, 10, 13, 12, 0, 0)) {

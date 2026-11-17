@@ -34,6 +34,18 @@ export const AuthErrors = {
       'Tu cuenta está suspendida. Comunícate con PANTER para más información.',
       { status: 403 },
     ),
+  unauthenticated: () =>
+    new AppError(ApiErrorCode.UNAUTHENTICATED, 'Inicia sesión para continuar.', { status: 401 }),
+  tokenExpired: () =>
+    new AppError(ApiErrorCode.TOKEN_EXPIRED, 'Tu sesión expiró. Renuévala para continuar.', {
+      status: 401,
+    }),
+  refreshTokenInvalid: () =>
+    new AppError(
+      ApiErrorCode.REFRESH_TOKEN_INVALID,
+      'Tu sesión ya no es válida. Ingresa de nuevo con tu correo.',
+      { status: 401 },
+    ),
   /** No está en contracts: los clientes lo muestran con el mensaje genérico del servidor. */
   emailDeliveryFailed: () =>
     new AppError(

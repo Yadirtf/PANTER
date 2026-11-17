@@ -1,3 +1,5 @@
+import type { Actor } from './modules/auth/domain/actor';
+
 /**
  * Bindings y variables del Worker panter-api (ver wrangler.jsonc).
  * Declarados a mano para no versionar el archivo generado por `wrangler types`.
@@ -47,9 +49,21 @@ export interface Env {
   // --- Login OTP (HU-101) ---
   /** Secreto: llave del HMAC-SHA256 de los códigos y correos en KV (`openssl rand -hex 32`). */
   OTP_SECRET?: string;
+
+  // --- Tokens JWT (HU-103). Generar con scripts/generar_llaves_jwt.sh. ---
+  /** Secreto: llave privada RSA 2048 en PEM PKCS8 ("-----BEGIN PRIVATE KEY-----"). */
+  JWT_PRIVATE_KEY?: string;
+  /** Secreto: llave pública en PEM SPKI ("-----BEGIN PUBLIC KEY-----"). Se publica en el JWKS. */
+  JWT_PUBLIC_KEY?: string;
+  /** Var: identificador de la llave (`kid` del header y del JWKS). Cambiarlo al rotar llaves. */
+  JWT_KID?: string;
 }
 
 /** Tipo de contexto de Hono para toda la app. */
 export interface AppBindings {
   Bindings: Env;
+  Variables: {
+    /** Lo pone `requireAuth` (modules/auth/http/require-auth.ts). */
+    actor?: Actor;
+  };
 }
