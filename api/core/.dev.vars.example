@@ -1,3 +1,7 @@
 # Copiar a .dev.vars (ignorado por git) para `wrangler dev`. Nunca versionar valores reales.
 # Cadena de tu rama personal de Neon (dev-<nombre>); requiere sslmode=require.
 DATABASE_URL=postgresql://usuario:clave@ep-xxxx-xxxx.us-east-2.aws.neon.tech/panter?sslmode=require
+
+# Correo (HU-102). Sin BREVO_API_KEY el login responde 500 y el log dice qué falta.
+# BREVO_API_KEY=xkeysib-...
+# EMAIL_FROM=remitente-verificado-en-brevo@gmail.com
