@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@panter/contracts'],
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    // forbidden() para responder 403 en /prohibido y /solo-personal (HU-107).
+    authInterrupts: true,
+  },
 };
 
 export default nextConfig;

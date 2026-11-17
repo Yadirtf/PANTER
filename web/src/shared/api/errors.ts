@@ -1,17 +1,7 @@
-import { z } from 'zod';
+import { ApiErrorBodySchema, type ApiErrorBody } from '@panter/contracts';
 
-/**
- * Formato de error de la API (sección 4 de la especificación): `{ error: { code, message } }`.
- * TODO: mover a @panter/contracts cuando HU-002 publique el esquema oficial.
- */
-export const ApiErrorBodySchema = z.object({
-  error: z.object({
-    code: z.string().min(1),
-    message: z.string(),
-    details: z.unknown().optional(),
-  }),
-});
-export type ApiErrorBody = z.infer<typeof ApiErrorBodySchema>;
+/** Formato de error de la API (sección 4): esquema oficial de @panter/contracts. */
+export { ApiErrorBodySchema, type ApiErrorBody };
 
 /** Códigos que genera el propio cliente cuando la API no devuelve un error con formato. */
 export const ClientErrorCode = {
