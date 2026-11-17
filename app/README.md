@@ -115,12 +115,12 @@ Pruebas de los scripts de release: `bash scripts/probar_app_release.sh`.
 
 Organizado por funcionalidad en `src/`:
 
-| Carpeta          | Contenido                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------- |
-| `app/`           | Rutas de Expo Router por grupo: `(auth)`, `(passenger)`, `(driver)`, `(onboarding)` |
-| `shared/api/`    | Cliente HTTP tipado (`fetch` + esquemas Zod de `@panter/contracts`) y mensajes      |
-| `features/auth/` | Login OTP, store de sesión y almacenamiento en `expo-secure-store`                  |
-| `navigation/`    | `resolveRootGroup`: grupo de rutas según la sesión                                  |
+| Carpeta          | Contenido                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| `app/`           | Rutas de Expo Router por grupo: `(auth)`, `(web-only)`, `(onboarding)`, `(passenger)`, `(driver)` |
+| `shared/api/`    | Cliente HTTP tipado (`fetch` + esquemas Zod de `@panter/contracts`) y mensajes                    |
+| `features/auth/` | Login OTP, store de sesión y almacenamiento en `expo-secure-store`                                |
+| `navigation/`    | `resolveRootGroup`: grupo de rutas según la sesión                                                |
 
 - Todo error llega a la interfaz como `{ code, message }`; sin red el código es
   `NETWORK_ERROR`. Los textos en español están en `shared/api/error-messages.ts`.
@@ -128,4 +128,10 @@ Organizado por funcionalidad en `src/`:
   que venza el access token, o ante un 401 `TOKEN_EXPIRED`, llama una sola vez a
   `POST /auth/refresh` aunque haya varias peticiones a la vez, y reintenta. Si el refresh
   responde `REFRESH_TOKEN_INVALID`, cierra la sesión y la app vuelve al login.
+- `resolveRootGroup(session)` (sección 5.4): sin sesión → `(auth)`; solo roles de personal →
+  `(web-only)` (aviso "Usa la web"); modo conductor sin rol DRIVER → `(onboarding)`; con DRIVER →
+  `(driver)`; en otro caso → `(passenger)`. Al abrir la app con sesión se llama a `GET /me`.
+- El selector de modo (`POST /me/mode`) solo aparece con el rol DRIVER.
+- `EXPO_PUBLIC_WEB_URL` (opcional) es la URL de la web del aviso; si falta, se deduce del Worker
+  de la API en workers.dev (`panter-api-staging.<subdominio>` → `panter-web-staging.<subdominio>`).
 - Las pruebas (`pnpm test`) simulan la API con un `fetch` falso (`src/test/fake-api.ts`).

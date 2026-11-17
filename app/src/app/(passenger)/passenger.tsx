@@ -1,6 +1,7 @@
 import { PlaceholderScreen } from '../../components/placeholder-screen';
-import { useSession } from '../../features/auth/session/session-context';
+import { ModeSwitcher } from '../../features/auth/screens/mode-switcher';
 import { SignOutButton } from '../../features/auth/screens/sign-out-button';
+import { useSession } from '../../features/auth/session/session-context';
 
 export default function PassengerHomeScreen() {
   const { user } = useSession();
@@ -9,6 +10,7 @@ export default function PassengerHomeScreen() {
       title="Pasajero"
       description={`Mapa para pedir un viaje.\n${user?.email ?? ''}`}
     >
+      <ModeSwitcher />
       <SignOutButton />
     </PlaceholderScreen>
   );

@@ -309,3 +309,134 @@ describe('SessionManager: refresco del access token', () => {
     expect(t.fetch.calls).toHaveLength(0);
   });
 });
+
+describe('SessionManager: perfil al iniciar (GET /me)', () => {
+  it('start carga la sesión y actualiza roles y modo con GET /me', async () => {
+    const approved = makeUser({ roles: ['PASSENGER', 'DRIVER'] });
+    const t = setup(() => jsonResponse(200, approved), { stored: 1 });
+    await t.seed();
+
+    await t.manager.start();
+
+    expect(t.fetch.calls.map((c) => c.path)).toEqual([AuthRoutes.ME]);
+    expect(t.manager.getState().user?.roles).toEqual(['PASSENGER', 'DRIVER']);
+    await expect(t.storage.load()).resolves.toMatchObject({ user: approved });
+  });
+
+  it('sin sesión guardada no llama a GET /me', async () => {
+    const t = setup(() => jsonResponse(200, makeUser()));
+    await t.manager.start();
+    expect(t.fetch.calls).toHaveLength(0);
+    expect(t.manager.getState().status).toBe('signedOut');
+  });
+
+  it('sin red conserva los datos guardados', async () => {
+    const t = setup(
+      () => {
+        throw new TypeError('Network request failed');
+      },
+      { stored: 1 },
+    );
+    await t.seed();
+    await t.manager.start();
+    expect(t.manager.getState()).toMatchObject({ status: 'signedIn', user: makeUser() });
+  });
+
+  it('si la cuenta fue suspendida cierra la sesión', async () => {
+    for (const route of [
+      () => apiError(403, 'ACCOUNT_SUSPENDED'),
+      () => jsonResponse(200, makeUser({ status: 'SUSPENDED' })),
+    ]) {
+      const t = setup(route, { stored: 1 });
+      await t.seed();
+      await t.manager.start();
+      expect(t.manager.getState()).toMatchObject({
+        status: 'signedOut',
+        signedOutReason: 'ACCOUNT_SUSPENDED',
+      });
+      expect(t.kv.data.size).toBe(0);
+    }
+  });
+});
+
+describe('SessionManager: cambio de modo (POST /me/mode)', () => {
+  const driverUser = makeUser({ roles: ['PASSENGER', 'DRIVER'], activeMode: 'driver' });
+
+  it('envía { mode } y guarda el par de tokens nuevo', async () => {
+    const t = setup(() => jsonResponse(200, makeTokenPair(2, { user: driverUser })), {
+      stored: 1,
+    });
+    await t.seed();
+    await t.manager.load();
+
+    await t.manager.switchMode('driver');
+
+    expect(t.fetch.calls).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        path: AuthRoutes.ME_MODE,
+        body: { mode: 'driver' },
+        headers: expect.objectContaining({ Authorization: 'Bearer access-1' }),
+      }),
+    ]);
+    expect(t.manager.getState()).toMatchObject({ activeMode: 'driver', user: driverUser });
+    expect(t.kv.data.get(STORAGE_KEYS.ACCESS_TOKEN)).toBe('access-2');
+    expect(t.kv.data.get(STORAGE_KEYS.REFRESH_TOKEN)).toBe('refresh-2');
+  });
+
+  it.each(['MODE_CHANGE_ACTIVE_TRIP', 'MODE_NOT_ALLOWED'])(
+    'si responde %s lanza el error y no cambia la sesión',
+    async (code) => {
+      const t = setup(() => apiError(409, code), { stored: 1 });
+      await t.seed();
+      await t.manager.load();
+
+      await expect(t.manager.switchMode('driver')).rejects.toMatchObject({ code });
+      expect(t.manager.getState()).toMatchObject({ status: 'signedIn', activeMode: 'passenger' });
+      expect(t.kv.data.get(STORAGE_KEYS.ACCESS_TOKEN)).toBe('access-1');
+    },
+  );
+
+  it('con el access token vencido refresca antes de cambiar de modo', async () => {
+    const t = setup(
+      (req) => {
+        if (req.path === AuthRoutes.REFRESH) return jsonResponse(200, makeTokenPair(2));
+        return jsonResponse(200, makeTokenPair(3, { user: driverUser }));
+      },
+      { stored: 1 },
+    );
+    await t.seed();
+    t.clock.now = START + 20 * MINUTE;
+
+    await t.manager.switchMode('driver');
+
+    expect(t.fetch.calls.map((c) => c.path)).toEqual([AuthRoutes.REFRESH, AuthRoutes.ME_MODE]);
+    expect(t.fetch.calls[1]?.headers.Authorization).toBe('Bearer access-2');
+    expect(t.kv.data.get(STORAGE_KEYS.REFRESH_TOKEN)).toBe('refresh-3');
+  });
+
+  it('un refresh en curso no pisa el par emitido por el cambio de modo', async () => {
+    const gate = deferred<void>();
+    const t = setup(
+      async (req) => {
+        if (req.path === AuthRoutes.REFRESH) {
+          await gate.promise;
+          // El cambio de modo rotó el refresh token: el anterior ya no sirve.
+          return apiError(401, 'REFRESH_TOKEN_INVALID');
+        }
+        return jsonResponse(200, makeTokenPair(3, { user: driverUser }));
+      },
+      { stored: 1 },
+    );
+    await t.seed();
+    await t.manager.load();
+
+    const refreshing = t.manager.refreshAccessToken('access-1');
+    await t.manager.switchMode('driver');
+    gate.resolve();
+
+    await expect(refreshing).resolves.toBe('access-3');
+    expect(t.manager.getState()).toMatchObject({ status: 'signedIn', activeMode: 'driver' });
+    expect(t.kv.data.get(STORAGE_KEYS.REFRESH_TOKEN)).toBe('refresh-3');
+  });
+});

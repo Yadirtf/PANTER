@@ -1,11 +1,16 @@
 // Configuración dinámica de Expo por perfil.
-// APP_ENV (development | staging | production) y EXPO_PUBLIC_API_URL llegan del entorno:
+// APP_ENV (development | staging | production), EXPO_PUBLIC_API_URL y EXPO_PUBLIC_WEB_URL
+// (opcional) llegan del entorno:
 // archivo .env local (ver .env.example), variables del CI o perfiles de eas.json.
 // APP_VERSION y APP_VERSION_CODE (HU-008) los fija el CI: versionName del tag app-v* y
 // versionCode del número de ejecución. En local se usan 0.1.0 y 1.
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 import { withReleaseSigning } from './plugins/with-release-signing.ts';
-import { applicationIdSuffix, resolveEnvironment } from './src/config/environment.ts';
+import {
+  applicationIdSuffix,
+  resolveEnvironment,
+  resolveWebUrl,
+} from './src/config/environment.ts';
 import { resolveVersion } from './src/config/version.ts';
 
 const BASE_APPLICATION_ID = 'co.panter.app';
@@ -15,6 +20,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     APP_ENV: process.env.APP_ENV,
     EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
   });
+  // Opcional: URL de la web para el aviso a usuarios de personal (HU-106).
+  const webUrl = resolveWebUrl(process.env.EXPO_PUBLIC_WEB_URL, { appEnv, apiUrl });
   const { version, versionCode } = resolveVersion({
     APP_VERSION: process.env.APP_VERSION,
     APP_VERSION_CODE: process.env.APP_VERSION_CODE,
@@ -52,6 +59,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       appEnv,
       apiUrl,
+      webUrl,
     },
   });
 };

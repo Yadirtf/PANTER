@@ -128,14 +128,64 @@ export class SessionManager implements AuthHandler {
   /** Guarda el par de tokens de login, refresh o cambio de modo y marca la sesión activa. */
   async applyTokenPair(pair: TokenPairResponse): Promise<void> {
     const session = sessionFromTokenPair(pair, this.now());
-    await this.storage.save(session);
+    // Primero en memoria: las peticiones en curso ven de inmediato el par nuevo.
     this.setSession(session);
+    await this.storage.save(session);
   }
 
   /** Login exitoso (POST /auth/otp/verify). */
   async signIn(pair: TokenPairResponse): Promise<void> {
     this.epoch += 1;
     this.refreshing = null;
+    await this.applyTokenPair(pair);
+  }
+
+  /** Al abrir la app: carga la sesión guardada y, si hay, refresca roles y modo con GET /me. */
+  async start(): Promise<void> {
+    await this.load();
+    if (this.session) await this.refreshProfile();
+  }
+
+  /**
+   * GET /me: actualiza roles y modo (p. ej. si un administrador aprobó al conductor). Sin red se
+   * siguen usando los datos guardados; si la cuenta fue suspendida se cierra la sesión.
+   */
+  async refreshProfile(): Promise<void> {
+    const epoch = this.epoch;
+    let user: MeResponse;
+    try {
+      user = await this.api.getMe();
+    } catch (error) {
+      if (
+        epoch === this.epoch &&
+        isApiError(error) &&
+        error.code === ApiErrorCode.ACCOUNT_SUSPENDED
+      ) {
+        await this.expire(error.code);
+      }
+      return;
+    }
+    if (epoch !== this.epoch || !this.session) return;
+    if (user.status !== 'ACTIVE') {
+      await this.expire(ApiErrorCode.ACCOUNT_SUSPENDED);
+      return;
+    }
+    const session: StoredSession = { ...this.session, user };
+    this.setSession(session);
+    // Si falla el guardado, la próxima apertura vuelve a pedir GET /me.
+    await this.storage.save(session).catch(() => undefined);
+  }
+
+  /**
+   * POST /me/mode: cambia entre pasajero y conductor y guarda el par de tokens nuevo. Lanza
+   * `ApiError` (MODE_CHANGE_ACTIVE_TRIP, MODE_NOT_ALLOWED, NETWORK_ERROR…) sin tocar la sesión.
+   */
+  async switchMode(mode: ActiveMode): Promise<void> {
+    const epoch = this.epoch;
+    const pair = await this.api.switchMode({ mode });
+    if (epoch !== this.epoch) {
+      throw new ApiError(ApiErrorCode.UNAUTHENTICATED, 'La sesión cambió', 401);
+    }
     await this.applyTokenPair(pair);
   }
 
@@ -212,10 +262,17 @@ export class SessionManager implements AuthHandler {
       throw new ApiError(ApiErrorCode.REFRESH_TOKEN_INVALID, 'La sesión venció', 401);
     }
 
+    // Otro par reemplazó al que se está refrescando (p. ej. un cambio de modo): se usa ese.
+    const replaced = () =>
+      epoch === this.epoch &&
+      this.session !== null &&
+      this.session.refreshToken !== session.refreshToken;
+
     let pair: TokenPairResponse;
     try {
       pair = await this.api.refresh({ refreshToken: session.refreshToken });
     } catch (error) {
+      if (replaced() && this.session) return this.session.accessToken;
       if (epoch === this.epoch && isApiError(error) && TERMINAL_REFRESH_CODES.has(error.code)) {
         await this.expire(error.code);
       }
@@ -224,9 +281,10 @@ export class SessionManager implements AuthHandler {
     }
 
     if (epoch !== this.epoch) {
-      // La sesión se cerró o cambió mientras se refrescaba: el resultado ya no aplica.
+      // La sesión se cerró mientras se refrescaba: el resultado ya no aplica.
       throw new ApiError(ApiErrorCode.UNAUTHENTICATED, 'La sesión cambió', 401);
     }
+    if (replaced() && this.session) return this.session.accessToken;
     await this.applyTokenPair(pair);
     return pair.accessToken;
   }
