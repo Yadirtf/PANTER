@@ -20,6 +20,8 @@ export default defineConfig({
     coverage: {
       provider: 'istanbul',
       include: ['src/**/*.ts'],
+      // Los repositorios Drizzle se miden en test:integration, contra Postgres real.
+      exclude: ['src/**/infrastructure/drizzle-*.ts'],
       reporter: ['text-summary', 'text', 'html'],
       thresholds: {
         'src/modules/email/**': CRITICAL,

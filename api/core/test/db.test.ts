@@ -9,6 +9,7 @@ import {
   parseGeoPoint,
   toEwkt,
 } from '../src/shared/infrastructure/db/geography';
+import { rowsOf } from '../src/shared/infrastructure/db/rows';
 import { roleEnum, userRoles, users } from '../src/shared/infrastructure/db/schema';
 
 // Parque principal de Villagarzón, aprox.
@@ -123,5 +124,14 @@ describe('cliente por request', () => {
   it('crear el cliente no abre conexiones', () => {
     const db = buildDb({ DATABASE_URL: 'postgresql://u:p@ep-test.neon.tech/panter' });
     expect(typeof db.select).toBe('function');
+  });
+});
+
+describe('rowsOf', () => {
+  it('acepta el resultado de neon-http ({ rows }) y el de postgres-js (arreglo)', () => {
+    expect(rowsOf([{ a: 1 }])).toEqual([{ a: 1 }]);
+    expect(rowsOf({ rows: [{ a: 2 }], fields: [] })).toEqual([{ a: 2 }]);
+    expect(rowsOf({})).toEqual([]);
+    expect(rowsOf(null)).toEqual([]);
   });
 });

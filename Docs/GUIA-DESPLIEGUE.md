@@ -264,6 +264,7 @@ Worker dice exactamente qué falta y cómo cargarlo.
 
 | Nombre                   | Tipo    | Dónde se carga                              | Para qué                                         |
 | ------------------------ | ------- | ------------------------------------------- | ------------------------------------------------ |
+| `OTP_SECRET`             | Secreto | Cloudflare (o `wrangler secret put`)        | Llave del hash de los códigos en KV              |
 | `BREVO_API_KEY`          | Secreto | Cloudflare (o `wrangler secret put`)        | Enviar el correo con el código (Brevo)           |
 | `RESEND_API_KEY`         | Secreto | Cloudflare (opcional, cuando haya dominio)  | Respaldo automático (Resend)                     |
 | `OTP_DEV_ECHO_ALLOWLIST` | Secreto | Cloudflare, solo staging (opcional)         | Correos de testers con el código en los logs     |
@@ -339,6 +340,24 @@ testers. En producción es imposible: el código exige `ENVIRONMENT=staging` aun
    igual; si Brevo falla, el tester puede seguir con el código del log
    (evento `otp_email_failed_echoed`).
 4. En vivo desde la terminal: `pnpm exec wrangler tail panter-api-staging --search otp_dev_echo`.
+
+### M1.3 · OTP_SECRET (hash de los códigos)
+
+La API nunca guarda el código ni el correo en claro: en KV solo queda su HMAC-SHA256 con esta
+llave. Es un valor aleatorio distinto por ambiente.
+
+1. Genéralo en tu computador: `openssl rand -hex 32` (64 caracteres hexadecimales). Sin
+   terminal, sirve cualquier generador de contraseñas de 64 caracteres; el mínimo aceptado son
+   32.
+2. Cárgalo como secreto `OTP_SECRET` en `panter-api-staging` (y otro distinto en `panter-api`).
+3. Si lo cambias, los códigos pendientes dejan de servir (los usuarios piden uno nuevo) y se
+   reinicia el límite de solicitudes. No afecta las cuentas.
+
+Límites del OTP (especificación §7.4): 3 códigos por correo cada 15 minutos, 5 intentos por
+código y 5 minutos de vigencia. Se guardan en KV, que es **eventualmente consistente** (un
+cambio puede tardar hasta ~60 s en verse en otras ubicaciones de Cloudflare): en el piloto se
+acepta que, con peticiones casi simultáneas desde lugares distintos, el límite se exceda por
+poco.
 
 ## Variables de entorno en tu computador (desarrollo local, opcional)
 

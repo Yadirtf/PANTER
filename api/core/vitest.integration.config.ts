@@ -8,5 +8,12 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 20_000,
     fileParallelism: false,
+    // Cobertura de los repositorios Drizzle (excluidos de `pnpm test`, que no tiene base de datos).
+    coverage: {
+      provider: 'istanbul',
+      include: ['src/**/infrastructure/drizzle-*.ts'],
+      reporter: ['text'],
+      thresholds: { statements: 90, branches: 80, functions: 90, lines: 90 },
+    },
   },
 });
