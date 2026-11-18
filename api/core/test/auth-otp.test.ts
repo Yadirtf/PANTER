@@ -19,6 +19,7 @@ import {
 } from '../src/modules/auth/infrastructure/kv-otp-store';
 import { BREVO_API_URL } from '../src/modules/email/infrastructure/brevo-email-sender';
 import { captureDelivery, MemoryUserRepository } from './support/auth-fakes';
+import { memoryConsent } from './support/consent-fakes';
 import { testKeys, type TestKeys } from './support/jwt-keys';
 
 const OTP_SECRET = 'test-otp-secret-0123456789abcdef0123456789abcdef';
@@ -48,7 +49,12 @@ function setup(overrides: AuthOverrides = {}) {
   const users = new MemoryUserRepository();
   const mail = captureDelivery();
   const app = createApp({
-    auth: buildAuthFactories({ users: () => users, deliver: () => mail.deliver, ...overrides }),
+    auth: buildAuthFactories({
+      users: () => users,
+      deliver: () => mail.deliver,
+      consent: memoryConsent().reader,
+      ...overrides,
+    }),
   });
   const post = (path: string, body: unknown, extra: Partial<Env> = {}) =>
     app.request(
@@ -298,7 +304,9 @@ describe('configuración', () => {
       .mockImplementation(async () => new Response(null, { status: 201 }));
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const users = new MemoryUserRepository();
-    const app = createApp({ auth: buildAuthFactories({ users: () => users }) });
+    const app = createApp({
+      auth: buildAuthFactories({ users: () => users, consent: memoryConsent().reader }),
+    });
     const emailEnv = {
       EMAIL_FROM: 'panter@gmail.com',
       BREVO_API_KEY: 'xkeysib-test',

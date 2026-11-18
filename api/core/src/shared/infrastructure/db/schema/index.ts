@@ -2,3 +2,4 @@
 export * from './enums';
 export * from './users';
 export * from './role-audit';
+export * from './user-consents';
