@@ -272,7 +272,9 @@ describe('configuración', () => {
     expect(await res.json()).toEqual({
       error: { code: 'INTERNAL_ERROR', message: 'Error interno del servidor' },
     });
-    expect(String(error.mock.calls[0]?.[1])).toMatch(/secreto OTP_SECRET/);
+    expect((error.mock.calls[0]?.[0] as { errorMessage?: string })?.errorMessage).toMatch(
+      /secreto OTP_SECRET/,
+    );
     expect((await exports.default.fetch('https://api.test/health')).status).toBe(200);
   });
 
@@ -285,7 +287,9 @@ describe('configuración', () => {
       { OTP_SECRET: 'corto' },
     );
     expect(res.status).toBe(500);
-    expect(String(error.mock.calls[0]?.[1])).toMatch(/openssl rand -hex 32/);
+    expect((error.mock.calls[0]?.[0] as { errorMessage?: string })?.errorMessage).toMatch(
+      /openssl rand -hex 32/,
+    );
   });
 
   it('con la composición real y Brevo simulado: eco en staging, nunca en production', async () => {

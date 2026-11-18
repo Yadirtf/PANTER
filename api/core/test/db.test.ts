@@ -118,7 +118,18 @@ describe('esquema', () => {
 
 describe('cliente por request', () => {
   it('falla con un mensaje claro si falta DATABASE_URL', () => {
-    expect(() => buildDb({})).toThrow(/DATABASE_URL/);
+    expect(() => buildDb({})).toThrow(/DATABASE_URL no está configurada.*Secret/);
+    expect(() => buildDb({ DATABASE_URL: '  ' })).toThrow(/no está configurada/);
+  });
+
+  it('explica una cadena que no es de conexión sin mostrar su valor', () => {
+    const bad = "psql 'postgresql://u:secreta@ep-test.neon.tech/panter'";
+    expect(() => buildDb({ DATABASE_URL: bad })).toThrow(/no es una cadena de conexión válida/);
+    try {
+      buildDb({ DATABASE_URL: bad });
+    } catch (error) {
+      expect((error as Error).message).not.toContain('secreta');
+    }
   });
 
   it('crear el cliente no abre conexiones', () => {
