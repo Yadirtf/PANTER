@@ -1,11 +1,19 @@
-import { ApiErrorCode, OtpRequestBodySchema, type ApiErrorBody } from '@panter/contracts';
+import { ApiErrorCode, OtpRequestBodySchema, type TokenPairResponse } from '@panter/contracts';
 import { NextResponse, type NextRequest } from 'next/server';
-import type { z } from 'zod';
-import { LOGIN_PATH, postLoginPath } from '@/features/navigation/role-home';
-import { ClientErrorCode, toApiError } from '@/shared/api/errors';
+import { LOGIN_PATH, postLoginPath, safeNextPath } from '@/features/navigation/role-home';
+import { isApiError } from '@/shared/api/errors';
 import { SessionVerifyBodySchema, type SessionNavigation } from '../session-contract';
 import { STAFF_ONLY_MESSAGE } from '../lib/messages';
+import {
+  crossSiteResponse,
+  errorJson,
+  fromApiFailure,
+  isCrossSite,
+  NO_STORE,
+  readJson,
+} from './bff-http';
 import { clearSessionCookies, REFRESH_COOKIE, setSessionCookies } from './cookies';
+import { isSessionRejected } from './session-call';
 import type { SessionApi } from './session-api';
 
 /**
@@ -14,76 +22,6 @@ import type { SessionApi } from './session-api';
  */
 export interface SessionRouteDeps {
   api: SessionApi;
-}
-
-const NO_STORE = { 'cache-control': 'no-store' };
-
-function errorResponse(status: number, body: ApiErrorBody): NextResponse {
-  return NextResponse.json(body, { status, headers: NO_STORE });
-}
-
-function error(status: number, code: string, message: string, details?: unknown): NextResponse {
-  return errorResponse(status, { error: { code, message, ...(details ? { details } : {}) } });
-}
-
-/** Convierte un fallo de la API en la misma respuesta de error para el navegador. */
-function fromApiFailure(value: unknown): NextResponse {
-  const apiError = toApiError(value);
-  if (apiError.status === 0 || apiError.code === ClientErrorCode.INVALID_RESPONSE) {
-    return error(
-      502,
-      ClientErrorCode.NETWORK_ERROR,
-      'No pudimos conectar con PANTER. Intenta de nuevo en un momento.',
-    );
-  }
-  const status = apiError.status >= 400 ? apiError.status : 502;
-  return error(status, apiError.code, apiError.message, apiError.details);
-}
-
-/**
- * Rechaza peticiones de otros orígenes (las cookies ya son SameSite=Lax; esto es una capa más).
- * Se compara contra el encabezado Host y no contra `request.url`, que en el Worker de OpenNext
- * no siempre conserva el host público.
- */
-function isCrossSite(request: NextRequest): boolean {
-  const fetchSite = request.headers.get('sec-fetch-site');
-  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') return true;
-  const origin = request.headers.get('origin');
-  if (!origin) return false;
-  const host = request.headers.get('host');
-  try {
-    return new URL(origin).host !== host;
-  } catch {
-    return true;
-  }
-}
-
-async function readJson<S extends z.ZodType>(
-  request: NextRequest,
-  schema: S,
-): Promise<{ ok: true; data: z.output<S> } | { ok: false; response: NextResponse }> {
-  if (isCrossSite(request)) {
-    return { ok: false, response: error(403, ApiErrorCode.FORBIDDEN, 'Origen no permitido.') };
-  }
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    body = undefined;
-  }
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      response: error(400, ApiErrorCode.VALIDATION_ERROR, 'Revisa los datos e intenta de nuevo.', {
-        issues: parsed.error.issues.map((issue) => ({
-          path: issue.path.join('.'),
-          message: issue.message,
-        })),
-      }),
-    };
-  }
-  return { ok: true, data: parsed.data };
 }
 
 /** POST /api/session/otp/request → POST /auth/otp/request. */
@@ -120,7 +58,7 @@ export async function handleOtpVerify(
   if (!redirectTo) {
     // Cuenta sin roles de personal: no se deja sesión abierta en la web.
     await deps.api.logout(tokens.refreshToken).catch(() => undefined);
-    return error(403, ApiErrorCode.FORBIDDEN, STAFF_ONLY_MESSAGE);
+    return errorJson(403, ApiErrorCode.FORBIDDEN, STAFF_ONLY_MESSAGE);
   }
 
   const navigation: SessionNavigation = { redirectTo };
@@ -134,7 +72,7 @@ export async function handleLogout(
   request: NextRequest,
   deps: SessionRouteDeps,
 ): Promise<NextResponse> {
-  if (isCrossSite(request)) return error(403, ApiErrorCode.FORBIDDEN, 'Origen no permitido.');
+  if (isCrossSite(request)) return crossSiteResponse();
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
   if (refreshToken) await deps.api.logout(refreshToken).catch(() => undefined);
 
@@ -142,4 +80,48 @@ export async function handleLogout(
   const response = NextResponse.json(navigation, { status: 200, headers: NO_STORE });
   clearSessionCookies(response);
   return response;
+}
+
+export interface RefreshRedirectDeps {
+  refresh(refreshToken: string): Promise<TokenPairResponse>;
+}
+
+/**
+ * GET /api/session/refresh?next=/ruta. Lo usan los Server Components cuando la API responde
+ * 401 TOKEN_EXPIRED: un Server Component no puede escribir cookies, así que redirige aquí para
+ * rotar el par de tokens (el mismo refresh del middleware) y volver a la página.
+ */
+export async function handleRefreshRedirect(
+  request: NextRequest,
+  deps: RefreshRedirectDeps,
+): Promise<NextResponse> {
+  const next = safeNextPath(request.nextUrl.searchParams.get('next')) ?? LOGIN_PATH;
+  const loginUrl = new URL(LOGIN_PATH, request.url);
+  if (next !== LOGIN_PATH) loginUrl.searchParams.set('next', next);
+
+  const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
+  if (!refreshToken) {
+    const response = NextResponse.redirect(loginUrl, 303);
+    clearSessionCookies(response);
+    return response;
+  }
+
+  try {
+    const tokens = await deps.refresh(refreshToken);
+    const response = NextResponse.redirect(new URL(next, request.url), 303);
+    setSessionCookies(response, tokens);
+    response.headers.set('cache-control', 'no-store');
+    return response;
+  } catch (failure) {
+    if (isApiError(failure) && isSessionRejected(failure)) {
+      const response = NextResponse.redirect(loginUrl, 303);
+      clearSessionCookies(response);
+      return response;
+    }
+    // Falla temporal (red, API caída): no se borra la sesión ni se redirige en bucle.
+    return new NextResponse(
+      'No pudimos renovar tu sesión con PANTER. Intenta de nuevo en un momento.',
+      { status: 503, headers: { ...NO_STORE, 'content-type': 'text/plain; charset=utf-8' } },
+    );
+  }
 }
