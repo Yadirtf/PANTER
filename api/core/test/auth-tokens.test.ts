@@ -398,12 +398,16 @@ describe('rutas de sesión', () => {
       { JWT_PRIVATE_KEY: undefined },
     );
     expect(res.status).toBe(500);
-    expect(String(error.mock.calls[0]?.[1])).toMatch(/secreto JWT_PRIVATE_KEY/);
+    expect((error.mock.calls[0]?.[0] as { errorMessage?: string })?.errorMessage).toMatch(
+      /secreto JWT_PRIVATE_KEY/,
+    );
     const jwks = await s.app.request(AuthRoutes.JWKS, {}, testEnv({ JWT_PUBLIC_KEY: undefined }));
     expect(jwks.status).toBe(500);
     const kid = await s.app.request(AuthRoutes.JWKS, {}, testEnv({ JWT_KID: '' }));
     expect(kid.status).toBe(500);
-    expect(String(error.mock.calls.at(-1)?.[1])).toMatch(/var JWT_KID/);
+    expect((error.mock.calls.at(-1)?.[0] as { errorMessage?: string })?.errorMessage).toMatch(
+      /var JWT_KID/,
+    );
     expect((await exports.default.fetch('https://api.test/health')).status).toBe(200);
   });
 

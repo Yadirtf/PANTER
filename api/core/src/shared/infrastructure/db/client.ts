@@ -14,6 +14,16 @@ export type Database = ReturnType<typeof createDb>;
  * `drizzle-orm/neon-serverless` (WebSocket) con un `Pool` creado y cerrado dentro del request.
  */
 export function createDb(databaseUrl: string | undefined) {
-  if (!databaseUrl) throw new Error('DATABASE_URL no está configurada');
-  return drizzle({ client: neon(databaseUrl), schema });
+  if (!databaseUrl?.trim()) {
+    throw new Error(
+      'DATABASE_URL no está configurada en el Worker: cárgala como Secret (Cloudflare → Settings → Variables and Secrets) o con `wrangler secret put DATABASE_URL`.',
+    );
+  }
+  const url = databaseUrl.trim();
+  if (!/^postgres(ql)?:\/\/[^\s'"]+$/.test(url)) {
+    throw new Error(
+      'DATABASE_URL del Worker no es una cadena de conexión válida (debe empezar por postgresql://, sin comillas ni psql).',
+    );
+  }
+  return drizzle({ client: neon(url), schema });
 }

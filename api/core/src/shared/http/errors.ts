@@ -45,7 +45,16 @@ export const errorHandler: ErrorHandler = (err, c) => {
       new AppError(code, err.message || 'Solicitud inválida', { status: err.status }),
     );
   }
-  console.error('Error no controlado', err);
+  // Workers Logs no serializa bien un Error suelto (solo muestra la pila): se registran nombre,
+  // mensaje y pila como campos. Los mensajes propios nunca incluyen valores de secretos.
+  console.error({
+    message: 'Error no controlado',
+    errorName: err instanceof Error ? err.name : typeof err,
+    errorMessage: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+    path: c.req.path,
+    method: c.req.method,
+  });
   return respond(c, AppError.internal());
 };
 
