@@ -1,4 +1,13 @@
-import { Role } from '@panter/contracts';
+import {
+  DocumentStatus,
+  DocumentType,
+  DriverAvailability,
+  DriverVerificationStatus,
+  GeofenceKind,
+  PricingModel,
+  Role,
+  VehicleType,
+} from '@panter/contracts';
 import { pgEnum } from 'drizzle-orm/pg-core';
 
 /** Tupla no vacía con los valores de un objeto `as const`, como la pide `pgEnum`. */
@@ -21,3 +30,15 @@ export const UserStatus = {
 export type UserStatus = (typeof UserStatus)[keyof typeof UserStatus];
 
 export const userStatusEnum = pgEnum('user_status', enumValues(UserStatus));
+
+// --- M2: conductores, tarifas y geocercas (valores desde @panter/contracts) ---
+export const vehicleTypeEnum = pgEnum('vehicle_type', enumValues(VehicleType));
+export const driverVerificationStatusEnum = pgEnum(
+  'driver_verification_status',
+  enumValues(DriverVerificationStatus),
+);
+export const driverAvailabilityEnum = pgEnum('driver_availability', enumValues(DriverAvailability));
+export const documentTypeEnum = pgEnum('document_type', enumValues(DocumentType));
+export const documentStatusEnum = pgEnum('document_status', enumValues(DocumentStatus));
+export const pricingModelEnum = pgEnum('pricing_model', enumValues(PricingModel));
+export const geofenceKindEnum = pgEnum('geofence_kind', enumValues(GeofenceKind));

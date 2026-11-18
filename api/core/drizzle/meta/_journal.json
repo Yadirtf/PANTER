@@ -29,6 +29,20 @@
       "when": 1795025848566,
       "tag": "0003_user_consents",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795028146969,
+      "tag": "0004_m2_drivers_fares",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795028168280,
+      "tag": "0005_m2_seed_fares",
+      "breakpoints": true
     }
   ]
 }
