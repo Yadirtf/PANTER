@@ -12,7 +12,7 @@ import { defineConfig } from 'vitest/config';
 //
 // Cobertura con @vitest/coverage-istanbul: istanbul instrumenta el código al transformarlo, así
 // que funciona también dentro de workerd (coverage-v8 no, porque necesita el inspector de Node).
-// Los umbrales por carpeta hacen fallar `pnpm test` si baja la cobertura de auth y email.
+// Los umbrales por carpeta hacen fallar `pnpm test` si baja la cobertura de auth, email y admin.
 const CRITICAL = { statements: 90, branches: 85, functions: 90, lines: 90 };
 
 export default defineConfig({
@@ -26,6 +26,7 @@ export default defineConfig({
       thresholds: {
         'src/modules/email/**': CRITICAL,
         'src/modules/auth/**': CRITICAL,
+        'src/modules/admin/**': CRITICAL,
       },
     },
     projects: [

@@ -35,6 +35,11 @@ Worker `panter-api` (Hono, REST). Organización por módulo con Clean Architectu
 - `user_roles`: `user_id` (FK a `users`, `ON DELETE CASCADE`), `role` (enum `role`),
   `granted_at`, `granted_by` (FK a `users`, `ON DELETE SET NULL`); PK `(user_id, role)`.
 
+- `role_audit` (HU-108): `id`, `actor_id` (FK a `users`, `ON DELETE SET NULL`; null si lo hizo
+  el sistema), `user_id` (FK, `ON DELETE CASCADE`), `role`, `action` (`grant` | `revoke`),
+  `at`. Índice `(user_id, at)`. `users` tiene además el índice `(created_at, id)` para el
+  listado paginado.
+
 El enum Postgres `role` se genera desde `Role` de `@panter/contracts`. Si se agrega un rol en
 contracts, `pnpm db:generate` produce la migración `ALTER TYPE … ADD VALUE` correspondiente.
 
@@ -136,6 +141,13 @@ pruebas de Workers funcionen sin base de datos; `createDb` falla con un mensaje 
   `scripts/generar_llaves_jwt.sh`.
 - **Rutas protegidas:** `router.use('/ruta/*', requireAuth())` y `getActor(c)` en el
   handler. Sin token devuelve 401 `UNAUTHENTICATED`; con el token vencido, 401 `TOKEN_EXPIRED`.
+- **Pruebas:** `test/unit/` cubre dominio y casos de uso con dobles en memoria, en Node.
+  `test/` cubre rutas y adaptadores en workerd. Ninguna llama a Brevo ni a Resend: usan
+  `fetch` simulado. `test-integration/user-repository.test.ts` prueba el repositorio contra
+  PostGIS real.
+- **Cobertura:** `pnpm test` mide con `@vitest/coverage-istanbul` (funciona dentro de workerd;
+  `coverage-v8` no). Falla si `modules/auth` o `modules/email` bajan de 90 % (85 % en ramas).
+  Los repositorios Drizzle se miden en `test:integration`.
 
 ## RBAC y modo activo (HU-104)
 
@@ -166,10 +178,29 @@ router.use('/driver/*', requireAuth(), requireMode('driver')); // 403 MODE_NOT_A
 - `ActiveTripChecker` responde siempre `false` y `DriverAvailability` es no-op
   (`infrastructure/pending-adapters.ts`) hasta HU-602 y HU-201; se reemplazan en
   `composition/auth.ts` (`AuthOverrides.activeTrips` / `driverAvailability`).
-- **Pruebas:** `test/unit/` cubre dominio y casos de uso con dobles en memoria, en Node.
-  `test/` cubre rutas y adaptadores en workerd. Ninguna llama a Brevo ni a Resend: usan
-  `fetch` simulado. `test-integration/user-repository.test.ts` prueba el repositorio contra
-  PostGIS real.
-- **Cobertura:** `pnpm test` mide con `@vitest/coverage-istanbul` (funciona dentro de workerd;
-  `coverage-v8` no). Falla si `modules/auth` o `modules/email` bajan de 90 % (85 % en ramas).
-  Los repositorios Drizzle se miden en `test:integration`.
+
+## Roles de personal (HU-108, módulo `admin`)
+
+| Pieza                | Ubicación                                                                     |
+| -------------------- | ----------------------------------------------------------------------------- |
+| Reglas               | `modules/admin/domain/staff-roles.ts`, cursor en `domain/user-cursor.ts`      |
+| Casos de uso         | `modules/admin/application/staff-roles.ts`                                    |
+| Repositorio          | `modules/admin/infrastructure/drizzle-staff-role-repository.ts`               |
+| Rutas (solo ADMIN)   | `GET /admin/users`, `POST /admin/users/:userId/roles`, `DELETE …/roles/:role` |
+| Primer administrador | `pnpm --filter @panter/api-core db:grant-admin <correo>` (`scripts/`)         |
+
+- `GET /admin/users?q=&cursor=&limit=`: `q` busca parte del correo sin distinguir mayúsculas
+  (los comodines `%` y `_` se buscan literalmente). Orden `created_at DESC, id DESC`; el cursor
+  es opaco y guarda `created_at` con microsegundos, así no se repiten ni se saltan cuentas
+  creadas en el mismo milisegundo.
+- Otorgar y retirar son idempotentes, guardan `granted_by` y escriben en `role_audit` solo si
+  hubo cambio. PASSENGER o DRIVER → 400 `ROLE_NOT_GRANTABLE`; usuario inexistente → 404;
+  quitarse el propio ADMIN → 409 `CANNOT_REVOKE_OWN_ADMIN`.
+- **Siempre queda un ADMIN.** Cada cambio es una sola sentencia que bloquea (`FOR UPDATE`, en
+  orden de id) las filas ADMIN del actor y del destino y exige que el actor siga siendo ADMIN
+  con la cuenta ACTIVE en la base de datos (no basta el token: 403 `FORBIDDEN`). Como nadie
+  puede quitarse su propio ADMIN, quien retira el de otro sigue siéndolo; si dos
+  administradores se lo retiran mutuamente a la vez, el segundo espera el bloqueo, ve que ya
+  no es ADMIN y no cambia nada. `test-integration/staff-role-repository.test.ts` lo prueba con
+  peticiones simultáneas.
+- Primer ADMIN: [Guía de despliegue → Darte el rol ADMIN por primera vez](../../Docs/GUIA-DESPLIEGUE.md#darte-el-rol-admin-por-primera-vez).
