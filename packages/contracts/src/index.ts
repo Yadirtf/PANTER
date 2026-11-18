@@ -5,3 +5,8 @@ export * from './auth';
 export * from './consent';
 export * from './admin';
 export * from './privacy-policy';
+export * from './geo';
+export * from './places';
+export * from './drivers';
+export * from './fares';
+export * from './routes';

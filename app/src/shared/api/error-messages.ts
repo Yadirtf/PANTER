@@ -44,6 +44,20 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   // Consentimiento
   CONSENT_REQUIRED: 'Debes aceptar el aviso de privacidad para continuar.',
   CONSENT_VERSION_OUTDATED: 'El aviso de privacidad cambió. Léelo y acéptalo de nuevo.',
+  // Onboarding de conductores
+  DRIVER_ALREADY_APPLIED: 'Ya enviaste tu solicitud de conductor. Revisa su estado.',
+  DRIVER_NOT_APPLIED: 'Primero registra tu vehículo para solicitar ser conductor.',
+  PLATE_ALREADY_REGISTERED: 'Esa placa ya está registrada por otro conductor.',
+  DOCUMENT_TOO_LARGE: 'La foto es muy pesada. Tómala de nuevo con menos resolución.',
+  DOCUMENT_TYPE_NOT_ALLOWED: 'Solo se aceptan fotos JPG, PNG o WEBP.',
+  UPLOAD_URL_INVALID: 'El enlace de carga venció. Intenta subir la foto de nuevo.',
+  DOCUMENTS_INCOMPLETE: 'Faltan documentos por subir o aprobar.',
+  INVALID_DRIVER_TRANSITION: 'Esa acción no es posible en el estado actual de tu solicitud.',
+  // Mapas, rutas y tarifas
+  OUT_OF_SERVICE_AREA: 'Ese lugar está fuera de la zona de servicio de PANTER.',
+  ROUTE_NOT_FOUND: 'No encontramos una ruta entre esos dos puntos.',
+  ROUTING_UNAVAILABLE: 'No pudimos calcular la ruta en este momento. Intenta de nuevo.',
+  FARE_RULE_NOT_FOUND: 'Ese tipo de vehículo no tiene tarifa configurada.',
 };
 
 /** Mensaje para mostrar al usuario a partir de un error normalizado `{ code }`. */
