@@ -72,3 +72,19 @@ describe('contratos de consentimiento', () => {
     expect(MeResponseSchema.parse(me)).toEqual(me);
   });
 });
+
+describe('aviso de privacidad', () => {
+  it('usa la versión vigente y tiene las secciones mínimas de la Ley 1581', async () => {
+    const { PRIVACY_POLICY } = await import('./privacy-policy');
+    expect(PRIVACY_POLICY.version).toBe(PRIVACY_POLICY_VERSION);
+    const titles = PRIVACY_POLICY.sections.map((s) => s.title);
+    expect(titles).toEqual(
+      expect.arrayContaining([
+        'Responsable del tratamiento',
+        'Para qué los usamos',
+        'Tus derechos',
+        'Autorización',
+      ]),
+    );
+  });
+});

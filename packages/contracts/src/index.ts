@@ -4,3 +4,4 @@ export * from './errors';
 export * from './auth';
 export * from './consent';
 export * from './admin';
+export * from './privacy-policy';
