@@ -269,9 +269,9 @@ Worker dice exactamente qué falta y cómo cargarlo.
 | `JWT_PUBLIC_KEY`         | Secreto | Cloudflare (o `wrangler secret put`)        | Verificarlos; se publica en el JWKS              |
 | `BREVO_API_KEY`          | Secreto | Cloudflare (o `wrangler secret put`)        | Enviar el correo con el código (Brevo)           |
 | `RESEND_API_KEY`         | Secreto | Cloudflare (opcional, cuando haya dominio)  | Respaldo automático (Resend)                     |
+| `EMAIL_FROM`             | Secreto | Cloudflare (o `wrangler secret put`)        | Remitente verificado en Brevo (tu Gmail del proyecto) |
 | `OTP_DEV_ECHO_ALLOWLIST` | Secreto | Cloudflare, solo staging (opcional)         | Correos de testers con el código en los logs     |
 | `EMAIL_PROVIDER`         | Var     | `api/core/wrangler.jsonc` (ya viene)        | `brevo` (por defecto) o `resend`                 |
-| `EMAIL_FROM`             | Var     | `api/core/wrangler.jsonc` (**hay que poner**) | Remitente verificado                           |
 | `EMAIL_FROM_NAME`        | Var     | `api/core/wrangler.jsonc` (ya viene)        | Nombre visible: `PANTER`                         |
 | `OTP_DEV_ECHO`           | Var     | `api/core/wrangler.jsonc` (ya viene)        | `true` en staging, `false` en producción         |
 | `JWT_KID`                | Var     | `api/core/wrangler.jsonc` (ya viene)        | Identificador de la llave (`kid`)                |
@@ -307,9 +307,9 @@ Sin dominio propio, el correo sale desde un correo personal verificado en Brevo
    IPs**. Si el bloqueo de IP desconocidas está activo, **desactívalo**: los Workers salen por
    IP variables y Brevo rechazaría el envío con `401 unauthorized`.
 5. Carga el secreto `BREVO_API_KEY` en `panter-api-staging` (ver arriba).
-6. Pon el Gmail verificado en `EMAIL_FROM` de `env.staging.vars` en `api/core/wrangler.jsonc`
-   (hoy está vacío, marcado `MARCADOR`) y fusiona el PR. **Envíamelo y abro yo el PR** si
-   prefieres (no es un secreto: aparece en todos los correos).
+6. Carga el secreto `EMAIL_FROM` en `panter-api-staging` con el Gmail verificado en el paso 2
+   (solo la dirección, por ejemplo `panter.proyecto@gmail.com`). Es secreto y no var para no
+   publicar el correo en el repositorio, que es público.
 
 Comprobación (cuando esté HU-101, el endpoint de login): pide un código desde la web o con
 `curl -X POST https://panter-api-staging.<subdominio>.workers.dev/auth/otp/request -H 'content-type: application/json' -d '{"email":"tu-correo@gmail.com"}'`.
@@ -321,8 +321,8 @@ remitente a tus contactos. En Brevo → **Transactional** → **Logs** se ve cad
 (SPF/DKIM), crea la API key en Resend → **API Keys** → **Create API key** (permiso _Sending
 access_) y cárgala como `RESEND_API_KEY`. Desde ese momento Resend queda de respaldo automático
 de Brevo (si Brevo falla o agota su cuota diaria con 429). Para que Resend sea el principal,
-cambia `EMAIL_PROVIDER` a `resend` y `EMAIL_FROM` a la dirección del dominio en
-`wrangler.jsonc`. Resend no envía desde Gmail: no cargues `RESEND_API_KEY` antes de tener el
+cambia `EMAIL_PROVIDER` a `resend` en `wrangler.jsonc` y el secreto `EMAIL_FROM` a la
+dirección del dominio. Resend no envía desde Gmail: no cargues `RESEND_API_KEY` antes de tener el
 dominio, o los respaldos fallarán.
 
 ### M1.2 · OTP_DEV_ECHO en staging (código en los logs)

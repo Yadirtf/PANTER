@@ -29,7 +29,10 @@ export interface Env {
   // --- Correo (HU-102). Ver Docs/GUIA-DESPLIEGUE.md → "Secretos y variables de M1 (login)". ---
   /** Var: proveedor principal, "brevo" (por defecto) o "resend". El otro queda de respaldo. */
   EMAIL_PROVIDER?: string;
-  /** Var: remitente. Con Brevo sin dominio, el correo verificado en Brevo → Senders. */
+  /**
+   * Secreto: remitente. Con Brevo sin dominio, el correo verificado en Brevo → Senders. Es
+   * secreto (no var) para no publicar ese correo en el repositorio, que es público.
+   */
   EMAIL_FROM?: string;
   /** Var: nombre visible del remitente ("PANTER"). */
   EMAIL_FROM_NAME?: string;
