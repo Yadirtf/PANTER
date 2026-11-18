@@ -2,11 +2,13 @@ import { buildAdminFactories } from './composition/admin';
 import { buildAuthFactories, requireAuth, type IdentityFactories } from './composition/auth';
 import { buildConsentFactories } from './composition/consent';
 import { buildGetHealth } from './composition/health';
+import { buildTilesFactories } from './composition/tiles';
 import { adminRoutes, type AdminFactories } from './modules/admin/http/routes';
 import { consentRoutes, type ConsentFactories } from './modules/consent/http/routes';
 import { meRoutes } from './modules/auth/http/me-routes';
 import { authRoutes } from './modules/auth/http/routes';
 import { healthRoutes } from './modules/health/http/routes';
+import { tilesRoutes, type TilesFactories } from './modules/tiles/http/routes';
 import { createRouter } from './shared/http/create-app';
 import { corsMiddleware } from './shared/http/cors';
 import { errorHandler, notFoundHandler } from './shared/http/errors';
@@ -16,6 +18,8 @@ export interface AppDeps {
   auth: IdentityFactories;
   admin: AdminFactories;
   consent: ConsentFactories;
+  /** Mapa base (HU-301). */
+  tiles: TilesFactories;
 }
 
 /**
@@ -27,11 +31,14 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     auth: overrides.auth ?? buildAuthFactories(),
     admin: overrides.admin ?? buildAdminFactories(),
     consent: overrides.consent ?? buildConsentFactories(),
+    tiles: overrides.tiles ?? buildTilesFactories(),
   };
   const app = createRouter();
 
   app.onError(errorHandler);
   app.notFound(notFoundHandler);
+  // Mapa base (HU-301): antes del CORS restringido porque /tiles tiene CORS abierto propio.
+  app.route('/', tilesRoutes(deps.tiles));
   app.use('*', corsMiddleware());
 
   app.route('/', healthRoutes(buildGetHealth));

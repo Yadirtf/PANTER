@@ -12,3 +12,4 @@ ios/
 next-env.d.ts
 cloudflare-env.d.ts
 api/core/drizzle/meta/
+mapa-base/

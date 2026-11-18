@@ -28,6 +28,8 @@ export default defineConfig({
         'src/modules/auth/**': CRITICAL,
         'src/modules/admin/**': CRITICAL,
         'src/modules/consent/**': CRITICAL,
+        // Mapa base (HU-301).
+        'src/modules/tiles/**': CRITICAL,
       },
     },
     projects: [

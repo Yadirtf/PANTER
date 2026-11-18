@@ -32,7 +32,11 @@
   // MARCADOR: reemplazar por el ID real (`wrangler kv namespace create panter-kv`).
   // En `wrangler dev` y en las pruebas el KV es simulado por Miniflare y el ID no importa.
   "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000000" }],
-  "r2_buckets": [{ "binding": "DOCUMENTS", "bucket_name": "panter-documents-dev" }],
+  // TILES (HU-301): mapa base público, servido por GET /tiles/:file. Ver Docs/GUIA-DESPLIEGUE.md.
+  "r2_buckets": [
+    { "binding": "DOCUMENTS", "bucket_name": "panter-documents-dev" },
+    { "binding": "TILES", "bucket_name": "panter-tiles-dev" },
+  ],
   "queues": {
     "producers": [{ "binding": "EVENTS", "queue": "panter-events-dev" }],
   },
@@ -57,7 +61,10 @@
       },
       // Namespace KV `panter-kv-staging`.
       "kv_namespaces": [{ "binding": "KV", "id": "94905b6be92b45a386fe5f4e8eeb9614" }],
-      "r2_buckets": [{ "binding": "DOCUMENTS", "bucket_name": "panter-documents-staging" }],
+      "r2_buckets": [
+        { "binding": "DOCUMENTS", "bucket_name": "panter-documents-staging" },
+        { "binding": "TILES", "bucket_name": "panter-tiles-staging" },
+      ],
       "queues": {
         "producers": [{ "binding": "EVENTS", "queue": "panter-events-staging" }],
       },
@@ -79,7 +86,10 @@
       },
       // MARCADOR: ID real del namespace KV de producción (pendiente de cuenta de Cloudflare).
       "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000002" }],
-      "r2_buckets": [{ "binding": "DOCUMENTS", "bucket_name": "panter-documents" }],
+      "r2_buckets": [
+        { "binding": "DOCUMENTS", "bucket_name": "panter-documents" },
+        { "binding": "TILES", "bucket_name": "panter-tiles" },
+      ],
       "queues": {
         "producers": [{ "binding": "EVENTS", "queue": "panter-events" }],
       },

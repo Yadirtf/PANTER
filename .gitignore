@@ -9,3 +9,5 @@ coverage/
 dist/
 .next/
 .open-next/
+# Mapa base generado por scripts/generar_mapa.sh (HU-301)
+mapa-base/

@@ -14,6 +14,12 @@ export interface Env {
   KV: KVNamespace;
   /** Documentos de conductores (privado, URLs firmadas). */
   DOCUMENTS: R2Bucket;
+  // --- Mapa base (HU-301) ---
+  /**
+   * Bucket R2 público del mapa base: .pmtiles, glifos, sprites y basemap.json, servidos por
+   * GET /tiles/:file. Opcional en el tipo: si falta, /tiles responde 503 y /health sigue bien.
+   */
+  TILES?: R2Bucket;
   /** Productor de eventos de dominio. */
   EVENTS: Queue;
   /** Service binding al Worker panter-realtime. */
