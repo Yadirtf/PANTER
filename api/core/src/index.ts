@@ -2,6 +2,9 @@ import { buildAdminFactories } from './composition/admin';
 import { buildAuthFactories, requireAuth, type IdentityFactories } from './composition/auth';
 import { buildConsentFactories } from './composition/consent';
 import { buildGetHealth } from './composition/health';
+// M2 · HU-305 (rutas)
+import { buildRoutingFactories } from './composition/routing';
+import { routingRoutes, type RoutingFactories } from './modules/routing/http/routes';
 import { adminRoutes, type AdminFactories } from './modules/admin/http/routes';
 import { consentRoutes, type ConsentFactories } from './modules/consent/http/routes';
 import { meRoutes } from './modules/auth/http/me-routes';
@@ -16,6 +19,8 @@ export interface AppDeps {
   auth: IdentityFactories;
   admin: AdminFactories;
   consent: ConsentFactories;
+  /** M2 · HU-305 */
+  routing: RoutingFactories;
 }
 
 /**
@@ -27,6 +32,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     auth: overrides.auth ?? buildAuthFactories(),
     admin: overrides.admin ?? buildAdminFactories(),
     consent: overrides.consent ?? buildConsentFactories(),
+    routing: overrides.routing ?? buildRoutingFactories(),
   };
   const app = createRouter();
 
@@ -39,6 +45,8 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   app.route('/', meRoutes(deps.auth, requireAuth));
   app.route('/', adminRoutes(deps.admin, requireAuth));
   app.route('/', consentRoutes(deps.consent, requireAuth));
+  // M2 · HU-305: GET /routes
+  app.route('/', routingRoutes(deps.routing, requireAuth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
   // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).

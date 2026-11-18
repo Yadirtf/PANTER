@@ -401,6 +401,70 @@ Sesiones: cada uso de `POST /auth/refresh` revoca el refresh token anterior. Si 
 reutiliza uno ya usado (posible robo), la API revoca toda esa sesión. `POST /auth/logout` solo
 necesita el refresh token. En KV se guarda el SHA-256 del refresh token, nunca el token.
 
+## M2 · Rutas con OpenRouteService
+
+`GET /routes` (HU-305) y `POST /fares/estimate` (HU-402) calculan la ruta por carretera con
+[OpenRouteService](https://openrouteservice.org) (ORS). La clave vive **solo** en el Worker
+`panter-api-staging` como secreto `ORS_API_KEY`; la app y la web nunca la ven.
+
+| Nombre        | Tipo    | Dónde se carga                       | Para qué                                   |
+| ------------- | ------- | ------------------------------------ | ------------------------------------------ |
+| `ORS_API_KEY` | Secreto | Cloudflare (o `wrangler secret put`) | Consultar rutas en ORS (plan Standard gratuito) |
+
+Sin la clave, `/routes` y `/fares/estimate` responden `503 ROUTING_UNAVAILABLE` ("No pudimos
+calcular la ruta en este momento") y el log del Worker registra `routing_not_configured` con lo
+que falta. `/health`, el login y el resto de la API siguen funcionando.
+
+### Crear la cuenta y obtener la clave
+
+1. Entra a [openrouteservice.org](https://openrouteservice.org) → **Sign up** (arriba a la
+   derecha). ORS usa una cuenta de HeiGIT: regístrate con el Gmail **del proyecto**, acepta los
+   términos y confirma el correo que te llega.
+2. Inicia sesión y abre el **Dashboard** (menú de la cuenta → **Dashboard**).
+3. En **Request a token**: tipo de token **Standard** (gratuito, sin tarjeta), nombre
+   `panter-api-staging` → **CREATE TOKEN**.
+4. Copia la clave que aparece en la lista de tokens (una cadena larga de letras y números).
+   Si la pierdes, puedes volver a copiarla desde el Dashboard. No la pegues en el repositorio
+   ni en chats.
+5. Carga el secreto `ORS_API_KEY` en `panter-api-staging`:
+   - **Navegador:** Cloudflare → **Workers & Pages** → `panter-api-staging` → **Settings** →
+     **Variables and Secrets** → **Add** → tipo **Secret** → nombre `ORS_API_KEY` → pega la
+     clave → **Deploy**.
+   - **Terminal** (desde `api/core`): `pnpm exec wrangler secret put ORS_API_KEY --env staging`
+     y pega la clave cuando la pida.
+6. Para producción crea **otro** token (`panter-api`) y cárgalo en el Worker `panter-api`: así
+   cada ambiente tiene su propia cuota.
+
+### Cuota y cómo vigilarla
+
+El plan Standard permite **2.000 rutas al día y 40 por minuto** (especificación §6.2). La API
+la cuida así:
+
+- **Caché de 10 minutos** en KV por par de coordenadas redondeadas a 4 decimales (≈ 11 m). Una
+  respuesta con `"cached": true` no gastó cuota. El estimado de tarifa usa la misma caché.
+- **Límite por usuario:** 20 consultas reales a ORS por hora. La siguiente responde
+  `429 ROUTING_UNAVAILABLE` con la cabecera `Retry-After`.
+- **Contador diario** en KV (`ors:usage:<fecha de Colombia>`, dura 2 días). Cada consulta real
+  deja un log `ors_request` con `count`, `quota`, `outcome` y `durationMs`. Desde el 80 % (1.600
+  consultas) cada consulta deja además un warning `ors_quota_warning`.
+- Verlo: Cloudflare → `panter-api-staging` → **Observability** → **Events**, busca
+  `ors_request` u `ors_quota_warning`; o en vivo:
+  `pnpm exec wrangler tail panter-api-staging --env staging --search ors_`.
+- Si ORS se queda sin cuota o falla, la API responde `503 ROUTING_UNAVAILABLE` (con el
+  `Retry-After` de ORS si viene). La cuota se reinicia cada día; el Dashboard de ORS muestra
+  el consumo restante.
+
+Comprobación: con un access token (ingresa en la web o la app y cópialo de la sesión), consulta
+la ruta del parque principal al aeropuerto:
+
+```bash
+curl -H "Authorization: Bearer <access token>" \
+  "https://panter-api-staging.<subdominio>.workers.dev/routes?origin=1.0295,-76.6165&destination=0.9789,-76.6053"
+```
+
+Debe responder `200` con `distanceMeters`, `durationSeconds`, `polyline` y `"cached": false`; si
+lo repites antes de 10 minutos, `"cached": true`.
+
 ## Darte el rol ADMIN por primera vez
 
 El panel de administración (`/admin` en la web) solo deja entrar a cuentas con el rol ADMIN, y
@@ -484,6 +548,7 @@ pnpm --filter @panter/web dev            # terminal 3 → http://localhost:3000
 | `/health` responde, pero lo que use la base de datos falla            | Falta el secreto `DATABASE_URL` del Worker (paso 6.2)                                                         |
 | La web muestra la API como caída                                      | `NEXT_PUBLIC_API_URL` con error o con `/` al final; corrígela y relanza **Deploy web**                         |
 | La primera consulta tarda 1–2 s                                       | Neon se suspende tras unos minutos sin uso (aceptado en pruebas, especificación §9)                           |
+| `/routes` o `/fares/estimate` responden `503 ROUTING_UNAVAILABLE`     | Falta el secreto `ORS_API_KEY` (log `routing_not_configured`) o ORS sin cuota (sección M2 · Rutas)            |
 | El teléfono dice "conflicto de firma"                                 | Ver [app/README.md](../app/README.md)                                                                         |
 
 ## Qué me envías cuando termines
