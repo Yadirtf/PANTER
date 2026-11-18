@@ -17,6 +17,8 @@ export const LOGIN_ERROR_MESSAGES: Record<string, string> = {
     'Tu cuenta está suspendida. Comunícate con el administrador de PANTER.',
   [ApiErrorCode.FORBIDDEN]: STAFF_ONLY_MESSAGE,
   [ApiErrorCode.INTERNAL_ERROR]: 'Tuvimos un problema. Intenta de nuevo en un momento.',
+  [ApiErrorCode.EMAIL_DELIVERY_FAILED]:
+    'No pudimos enviarte el código por correo. Intenta de nuevo en unos minutos.',
   [ClientErrorCode.NETWORK_ERROR]:
     'No pudimos conectar con PANTER. Revisa tu conexión e intenta de nuevo.',
 };

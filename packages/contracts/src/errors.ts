@@ -35,5 +35,13 @@ export const ApiErrorCode = {
   MODE_NOT_ALLOWED: 'MODE_NOT_ALLOWED',
   MODE_CHANGE_ACTIVE_TRIP: 'MODE_CHANGE_ACTIVE_TRIP',
   ACCOUNT_SUSPENDED: 'ACCOUNT_SUSPENDED',
+  // Correo (HU-102): el proveedor no pudo enviar el código (503)
+  EMAIL_DELIVERY_FAILED: 'EMAIL_DELIVERY_FAILED',
+  // Gestión de roles de personal (HU-108)
+  ROLE_NOT_GRANTABLE: 'ROLE_NOT_GRANTABLE',
+  CANNOT_REVOKE_OWN_ADMIN: 'CANNOT_REVOKE_OWN_ADMIN',
+  // Consentimiento de datos (HU-109)
+  CONSENT_REQUIRED: 'CONSENT_REQUIRED',
+  CONSENT_VERSION_OUTDATED: 'CONSENT_VERSION_OUTDATED',
 } as const;
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
