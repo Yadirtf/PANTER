@@ -1,5 +1,7 @@
+import { buildAdminFactories } from './composition/admin';
 import { buildAuthFactories, requireAuth, type IdentityFactories } from './composition/auth';
 import { buildGetHealth } from './composition/health';
+import { adminRoutes, type AdminFactories } from './modules/admin/http/routes';
 import { meRoutes } from './modules/auth/http/me-routes';
 import { authRoutes } from './modules/auth/http/routes';
 import { healthRoutes } from './modules/health/http/routes';
@@ -10,13 +12,18 @@ import { ErrorSchema } from './shared/http/schemas';
 
 export interface AppDeps {
   auth: IdentityFactories;
+  admin: AdminFactories;
 }
 
 /**
  * Monta los módulos sobre una app con el middleware de errores uniforme. Las pruebas pueden
  * pasar otras fábricas (p. ej. auth con repositorio en memoria y correo simulado).
  */
-export function createApp(deps: AppDeps = { auth: buildAuthFactories() }) {
+export function createApp(overrides: Partial<AppDeps> = {}) {
+  const deps: AppDeps = {
+    auth: overrides.auth ?? buildAuthFactories(),
+    admin: overrides.admin ?? buildAdminFactories(),
+  };
   const app = createRouter();
 
   app.onError(errorHandler);
@@ -26,6 +33,7 @@ export function createApp(deps: AppDeps = { auth: buildAuthFactories() }) {
   app.route('/', healthRoutes(buildGetHealth));
   app.route('/', authRoutes(deps.auth));
   app.route('/', meRoutes(deps.auth, requireAuth));
+  app.route('/', adminRoutes(deps.admin, requireAuth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
   // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).

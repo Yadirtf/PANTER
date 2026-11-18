@@ -26,6 +26,7 @@ una APK de prueba instalable.
 | Navegador                       | Verificar `/health`, `/openapi.json` y la web                           | 7    |
 | Tu computador + GitHub          | Llave de firma de la APK y APK de staging                               | 8    |
 | Brevo + Cloudflare → Worker     | Secretos y variables del login (M1)                                     | M1   |
+| Neon → SQL Editor               | Darte el rol ADMIN por primera vez                                      | M1   |
 
 **¿Y Firebase?** No se usa por ahora. La arquitectura v1.1 no usa Firebase para datos ni para
 autenticación (eso lo hacen Neon y el OTP por correo). Solo se necesitará en el hito M5
@@ -399,6 +400,58 @@ renueva sola). Los refresh tokens siguen funcionando, así que nadie tiene que v
 Sesiones: cada uso de `POST /auth/refresh` revoca el refresh token anterior. Si alguien
 reutiliza uno ya usado (posible robo), la API revoca toda esa sesión. `POST /auth/logout` solo
 necesita el refresh token. En KV se guarda el SHA-256 del refresh token, nunca el token.
+
+## Darte el rol ADMIN por primera vez
+
+El panel de administración (`/admin` en la web) solo deja entrar a cuentas con el rol ADMIN, y
+los roles de personal solo los puede dar otro ADMIN. Al principio no hay ninguno, así que el
+primero se da directamente en la base de datos. Se hace **una sola vez** por ambiente.
+
+1. **Crea tu cuenta:** ingresa una vez con tu correo en la web o en la app de staging (pides
+   el código y lo escribes). Eso crea la cuenta con el rol PASSENGER.
+2. **Abre el SQL Editor de Neon:** [console.neon.tech](https://console.neon.tech) → proyecto
+   `panter` → **SQL Editor**. Arriba elige la rama **`staging`** y la base de datos
+   **`panter`**.
+3. **Pega esto**, cambia `tu-correo@ejemplo.com` por tu correo (en los dos lugares) y pulsa
+   **Run**:
+
+   ```sql
+   INSERT INTO user_roles (user_id, role)
+   SELECT id, 'ADMIN'::role
+   FROM users
+   WHERE lower(email) = lower('tu-correo@ejemplo.com')
+   ON CONFLICT (user_id, role) DO NOTHING;
+
+   SELECT u.email, r.role, r.granted_at
+   FROM users u
+   JOIN user_roles r ON r.user_id = u.id
+   WHERE lower(u.email) = lower('tu-correo@ejemplo.com');
+   ```
+
+   - El resultado debe listar tu correo con `PASSENGER` y `ADMIN`.
+   - Es seguro repetirlo: si ya eras ADMIN no cambia nada (`ON CONFLICT … DO NOTHING`).
+   - Si la consulta final no devuelve filas, el correo no está registrado: revisa que sea el
+     mismo con el que ingresaste (las mayúsculas no importan) o vuelve al punto 1.
+4. **Cierra sesión en la web y vuelve a entrar.** El access token que tenías se emitió sin
+   ADMIN; el nuevo ya lo incluye y te lleva a `/admin`.
+5. Desde el panel das o quitas ADMIN, DISPATCHER y TOUR_OPERATOR a otras personas. Esos
+   cambios quedan registrados (quién, a quién, qué rol y cuándo) en la tabla `role_audit`.
+
+**Alternativa con la terminal** (cuando ya esté desplegado HU-108, que crea `role_audit`):
+desde la raíz del repositorio, con la cadena de conexión de la rama `staging` (Neon →
+**Connect**):
+
+```bash
+DATABASE_URL='postgresql://…/panter?sslmode=require' \
+  pnpm --filter @panter/api-core db:grant-admin tu-correo@ejemplo.com
+```
+
+Hace lo mismo que el SQL, deja constancia en `role_audit` (como hecho por el sistema) y dice
+si la cuenta no existe. Para **producción**, repite cualquiera de las dos opciones con la rama
+`main` de Neon.
+
+> Siempre queda al menos un ADMIN: la API no deja que un administrador se quite su propio rol
+> ADMIN, y solo otro ADMIN activo puede quitárselo.
 
 ## Variables de entorno en tu computador (desarrollo local, opcional)
 
