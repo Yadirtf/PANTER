@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ConsentStatusSchema } from './consent';
 import { ActiveModeSchema, RoleSchema } from './enums';
 
 /**
@@ -73,6 +74,12 @@ export const MeResponseSchema = z.object({
   status: UserStatusSchema,
   roles: z.array(RoleSchema).min(1),
   activeMode: ActiveModeSchema,
+  /**
+   * Estado del consentimiento de tratamiento de datos (HU-109). Opcional para no romper a los
+   * clientes mientras la API no lo envíe; cuando `required` es true, el cliente debe mostrar el
+   * aviso de privacidad y registrar la aceptación con POST /me/consent.
+   */
+  consent: ConsentStatusSchema.optional(),
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 

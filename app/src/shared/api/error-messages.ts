@@ -31,6 +31,15 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   MODE_CHANGE_ACTIVE_TRIP:
     'Tienes un viaje en curso. Termínalo o cancélalo antes de cambiar de modo.',
   ACCOUNT_SUSPENDED: 'Tu cuenta está suspendida. Comunícate con PANTER para más información.',
+  // Correo
+  EMAIL_DELIVERY_FAILED:
+    'No pudimos enviarte el código por correo. Intenta de nuevo en unos minutos.',
+  // Roles de personal (solo web; se incluyen para cubrir el contrato)
+  ROLE_NOT_GRANTABLE: 'Ese rol no se puede asignar desde aquí.',
+  CANNOT_REVOKE_OWN_ADMIN: 'No puedes quitarte tu propio rol de administrador.',
+  // Consentimiento
+  CONSENT_REQUIRED: 'Debes aceptar el aviso de privacidad para continuar.',
+  CONSENT_VERSION_OUTDATED: 'El aviso de privacidad cambió. Léelo y acéptalo de nuevo.',
 };
 
 /** Mensaje para mostrar al usuario a partir de un error normalizado `{ code }`. */
