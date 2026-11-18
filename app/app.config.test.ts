@@ -1,6 +1,6 @@
 import type { ConfigContext } from 'expo/config';
 import { afterEach, describe, expect, it } from 'vitest';
-import buildConfig from './app.config';
+import buildConfig, { CAMERA_PERMISSION_TEXT } from './app.config';
 
 const KEYS = [
   'APP_ENV',
@@ -78,5 +78,20 @@ describe('app.config', () => {
   it('rechaza versiones inválidas', () => {
     expect(() => withEnv({ APP_VERSION: 'app-v0.3.0' })).toThrow(/APP_VERSION inválida/);
     expect(() => withEnv({ APP_VERSION_CODE: '0' })).toThrow(/APP_VERSION_CODE/);
+  });
+
+  it('pide solo el permiso de cámara, con el texto en español (HU-203)', () => {
+    const plugins = withEnv({}).plugins ?? [];
+    const camera = plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-camera');
+    expect(camera).toEqual([
+      'expo-camera',
+      {
+        cameraPermission: CAMERA_PERMISSION_TEXT,
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        barcodeScannerEnabled: false,
+      },
+    ]);
+    expect(CAMERA_PERMISSION_TEXT).toMatch(/^PANTER usa la cámara para fotografiar tus documentos/);
   });
 });
