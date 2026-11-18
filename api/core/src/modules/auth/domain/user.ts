@@ -1,4 +1,10 @@
-import { ActiveMode, Role, type MeResponse, type UserStatus } from '@panter/contracts';
+import {
+  ActiveMode,
+  Role,
+  type ConsentStatus,
+  type MeResponse,
+  type UserStatus,
+} from '@panter/contracts';
 
 /** Cuenta con sus roles (especificación §5.1). Tipo propio del dominio, sin Drizzle. */
 export interface User {
@@ -31,8 +37,8 @@ export function resolveActiveMode(roles: readonly Role[], requested: ActiveMode)
     : ActiveMode.PASSENGER;
 }
 
-/** Perfil de la sesión (`MeResponse` de contracts). */
-export function toProfile(user: User, activeMode: ActiveMode): MeResponse {
+/** Perfil de la sesión (`MeResponse` de contracts), con el consentimiento si se conoce. */
+export function toProfile(user: User, activeMode: ActiveMode, consent?: ConsentStatus): MeResponse {
   return {
     id: user.id,
     email: user.email,
@@ -41,5 +47,6 @@ export function toProfile(user: User, activeMode: ActiveMode): MeResponse {
     status: user.status,
     roles: sortRoles(user.roles),
     activeMode: resolveActiveMode(user.roles, activeMode),
+    ...(consent ? { consent } : {}),
   };
 }

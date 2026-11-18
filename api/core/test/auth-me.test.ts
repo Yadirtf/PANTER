@@ -25,6 +25,7 @@ import {
 import { createRouter } from '../src/shared/http/create-app';
 import { errorHandler, notFoundHandler } from '../src/shared/http/errors';
 import { captureDelivery, MemoryUserRepository } from './support/auth-fakes';
+import { memoryConsent } from './support/consent-fakes';
 import { testKeys, type TestKeys } from './support/jwt-keys';
 
 const OTP_SECRET = 'test-otp-secret-0123456789abcdef0123456789abcdef';
@@ -62,6 +63,7 @@ function setup(options: { activeTrip?: boolean } = {}) {
       deliver: () => mail.deliver,
       activeTrips: () => ({ hasActiveTrip: async () => !!options.activeTrip }),
       driverAvailability: () => ({ setUnavailable }),
+      consent: memoryConsent().reader,
     }),
   });
   const request = (path: string, init: RequestInit & { token?: string } = {}) => {

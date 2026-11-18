@@ -204,3 +204,30 @@ router.use('/driver/*', requireAuth(), requireMode('driver')); // 403 MODE_NOT_A
   no es ADMIN y no cambia nada. `test-integration/staff-role-repository.test.ts` lo prueba con
   peticiones simultáneas.
 - Primer ADMIN: [Guía de despliegue → Darte el rol ADMIN por primera vez](../../Docs/GUIA-DESPLIEGUE.md#darte-el-rol-admin-por-primera-vez).
+
+## Consentimiento de datos (HU-109, módulo `consent`)
+
+| Pieza        | Ubicación                                                                    |
+| ------------ | ---------------------------------------------------------------------------- |
+| Reglas       | `modules/consent/domain/consent.ts` (`consentStatus`, evidencia)             |
+| Casos de uso | `modules/consent/application/consent.ts`                                     |
+| Repositorio  | `modules/consent/infrastructure/drizzle-consent-repository.ts`               |
+| Rutas        | `POST /me/consent` (con sesión), `GET /privacy-policy` (público)             |
+| Middleware   | `requireConsent()` de `src/composition/consent.ts` (aún sin usar, ver abajo) |
+
+- Tabla `user_consents` (migración 0003): PK `(user_id, version)`, `accepted_at`, `ip` y
+  `user_agent` opcionales (de `CF-Connecting-IP` y `User-Agent`, recortado a 512). Aceptar de
+  nuevo la misma versión conserva la primera fecha. `ON DELETE CASCADE` con `users`.
+- `POST /me/consent { version, accepted: true }` → `ConsentStatus`. Si `version` no es
+  `PRIVACY_POLICY_VERSION` → 409 `CONSENT_VERSION_OUTDATED` con `details.currentVersion`.
+- `GET /me` y las respuestas de login, refresh y `POST /me/mode` traen `user.consent`
+  (`ConsentStatus`); `required: true` → el cliente muestra el aviso (`PRIVACY_POLICY` de
+  contracts) y llama a `POST /me/consent`. El módulo auth lo lee por el puerto
+  `ConsentStatusReader`, sin depender del módulo consent.
+- `GET /privacy-policy` → `{ version, effectiveFrom }`. El texto está en contracts para que la
+  web y la app muestren exactamente lo mismo.
+- **`requireConsent()` está listo pero no se aplica a ninguna ruta.** El login, `/me` y la
+  administración deben funcionar sin consentimiento (la app los usa para mostrar el aviso y
+  registrar la aceptación). Cuando existan endpoints de negocio (viajes, solicitud de
+  conductor), se protegen con `router.use('/trips/*', requireAuth(), requireConsent())` →
+  403 `CONSENT_REQUIRED`. Cuesta una consulta a Postgres por petición.

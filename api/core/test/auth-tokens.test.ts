@@ -36,6 +36,7 @@ import {
 import { createRouter } from '../src/shared/http/create-app';
 import { errorHandler, notFoundHandler } from '../src/shared/http/errors';
 import { captureDelivery, MemoryUserRepository } from './support/auth-fakes';
+import { memoryConsent } from './support/consent-fakes';
 import { otherKeys, testKeys, type TestKeys } from './support/jwt-keys';
 
 const OTP_SECRET = 'test-otp-secret-0123456789abcdef0123456789abcdef';
@@ -71,7 +72,11 @@ function setup() {
   const users = new MemoryUserRepository();
   const mail = captureDelivery();
   const app = createApp({
-    auth: buildAuthFactories({ users: () => users, deliver: () => mail.deliver }),
+    auth: buildAuthFactories({
+      users: () => users,
+      deliver: () => mail.deliver,
+      consent: memoryConsent().reader,
+    }),
   });
   const post = (path: string, body: unknown, extra: Partial<Env> = {}) =>
     app.request(

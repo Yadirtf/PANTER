@@ -11,6 +11,7 @@ import { AuthErrors } from './errors';
 import type {
   ActiveTripChecker,
   Clock,
+  ConsentStatusReader,
   DriverAvailability,
   RefreshTokenStore,
   UserRepository,
@@ -31,8 +32,15 @@ async function loadActiveUser(users: UserRepository, actor: Actor): Promise<User
 /** GET /me: perfil, roles actuales (de la base de datos) y modo activo del token. */
 export type GetMe = (actor: Actor) => Promise<MeResponse>;
 
-export function makeGetMe(deps: { users: UserRepository }): GetMe {
-  return async (actor) => toProfile(await loadActiveUser(deps.users, actor), actor.activeMode);
+export function makeGetMe(deps: {
+  users: UserRepository;
+  /** Estado del consentimiento (HU-109); `required: true` → el cliente muestra el aviso. */
+  consent?: ConsentStatusReader;
+}): GetMe {
+  return async (actor) => {
+    const user = await loadActiveUser(deps.users, actor);
+    return toProfile(user, actor.activeMode, await deps.consent?.(user.id));
+  };
 }
 
 export interface SwitchModeDeps {

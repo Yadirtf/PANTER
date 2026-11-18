@@ -4,6 +4,7 @@ import type {
   AccessTokenVerifier,
   ActiveTripChecker,
   Clock,
+  ConsentStatusReader,
   DriverAvailability,
   OtpDelivery,
   UserRepository,
@@ -36,7 +37,9 @@ import {
   createKvRefreshTokenStore,
   createRefreshTokenCodec,
 } from '../modules/auth/infrastructure/refresh-tokens';
+import { makeGetConsentStatus } from '../modules/consent/application/consent';
 import { requireConfig } from './config';
+import { defaultConsentRepository } from './consent';
 import { buildDb } from './db';
 import { buildSendOtpEmail } from './email';
 
@@ -76,6 +79,8 @@ export interface AuthOverrides {
   activeTrips?: (env: Env) => ActiveTripChecker;
   /** Por defecto `noopDriverAvailability` hasta HU-201. */
   driverAvailability?: (env: Env) => DriverAvailability;
+  /** Estado del consentimiento (HU-109). Por defecto, el módulo consent sobre Postgres. */
+  consent?: (env: Env) => ConsentStatusReader;
   clock?: Clock;
 }
 
@@ -89,6 +94,9 @@ export function buildAuthFactories(overrides: AuthOverrides = {}): IdentityFacto
   const deliver = overrides.deliver ?? ((env: Env) => buildSendOtpEmail(env));
   const activeTrips = overrides.activeTrips ?? (() => noActiveTrips);
   const driverAvailability = overrides.driverAvailability ?? (() => noopDriverAvailability);
+  const consent =
+    overrides.consent ??
+    ((env: Env) => makeGetConsentStatus({ repo: defaultConsentRepository(env) }));
   const otpStore = (env: Env) => createKvOtpStore(env.KV, clock);
   const refreshStore = (env: Env) => createKvRefreshTokenStore(env.KV, clock);
   const codec = createRefreshTokenCodec();
@@ -103,6 +111,7 @@ export function buildAuthFactories(overrides: AuthOverrides = {}): IdentityFacto
       refreshStore: refreshStore(env),
       codec,
       clock,
+      consent: consent(env),
     });
 
   return {
@@ -142,7 +151,7 @@ export function buildAuthFactories(overrides: AuthOverrides = {}): IdentityFacto
       }),
     logout: (env) => makeLogout({ refreshStore: refreshStore(env), codec, clock }),
     jwks: (env) => () => buildJwks(jwtPublicKey(env), jwtKid(env)),
-    getMe: (env) => makeGetMe({ users: users(env) }),
+    getMe: (env) => makeGetMe({ users: users(env), consent: consent(env) }),
     switchMode: (env) =>
       makeSwitchMode({
         users: users(env),

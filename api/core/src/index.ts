@@ -1,7 +1,9 @@
 import { buildAdminFactories } from './composition/admin';
 import { buildAuthFactories, requireAuth, type IdentityFactories } from './composition/auth';
+import { buildConsentFactories } from './composition/consent';
 import { buildGetHealth } from './composition/health';
 import { adminRoutes, type AdminFactories } from './modules/admin/http/routes';
+import { consentRoutes, type ConsentFactories } from './modules/consent/http/routes';
 import { meRoutes } from './modules/auth/http/me-routes';
 import { authRoutes } from './modules/auth/http/routes';
 import { healthRoutes } from './modules/health/http/routes';
@@ -13,6 +15,7 @@ import { ErrorSchema } from './shared/http/schemas';
 export interface AppDeps {
   auth: IdentityFactories;
   admin: AdminFactories;
+  consent: ConsentFactories;
 }
 
 /**
@@ -23,6 +26,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   const deps: AppDeps = {
     auth: overrides.auth ?? buildAuthFactories(),
     admin: overrides.admin ?? buildAdminFactories(),
+    consent: overrides.consent ?? buildConsentFactories(),
   };
   const app = createRouter();
 
@@ -34,6 +38,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   app.route('/', authRoutes(deps.auth));
   app.route('/', meRoutes(deps.auth, requireAuth));
   app.route('/', adminRoutes(deps.admin, requireAuth));
+  app.route('/', consentRoutes(deps.consent, requireAuth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
   // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).

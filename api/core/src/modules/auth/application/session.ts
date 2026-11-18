@@ -10,6 +10,7 @@ import { AuthErrors } from './errors';
 import type {
   AccessTokenSigner,
   Clock,
+  ConsentStatusReader,
   RefreshTokenCodec,
   RefreshTokenStore,
   UserRepository,
@@ -22,6 +23,8 @@ export interface SessionDeps {
   codec: RefreshTokenCodec;
   newId?: () => string;
   clock?: Clock;
+  /** Estado del consentimiento para `user.consent` (HU-109). Sin él, el perfil no lo trae. */
+  consent?: ConsentStatusReader;
 }
 
 /** Emite un par access + refresh. Sin `familyId` abre una sesión (familia) nueva. */
@@ -56,7 +59,7 @@ export function makeIssueSession(deps: SessionDeps): IssueSession {
       expiresIn: access.expiresIn,
       refreshToken,
       refreshExpiresIn: REFRESH_TOKEN_TTL_SECONDS,
-      user: toProfile(user, activeMode),
+      user: toProfile(user, activeMode, await deps.consent?.(user.id)),
     };
   };
 }

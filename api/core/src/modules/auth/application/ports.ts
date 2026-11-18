@@ -1,4 +1,4 @@
-import type { ActiveMode, Role } from '@panter/contracts';
+import type { ActiveMode, ConsentStatus, Role } from '@panter/contracts';
 import type { Actor } from '../domain/actor';
 import type { User } from '../domain/user';
 
@@ -113,6 +113,14 @@ export interface RefreshTokenCodec {
   generate(): string;
   hash(token: string): Promise<string>;
 }
+
+// --- Consentimiento (HU-109) ---
+
+/**
+ * Puerto: estado del consentimiento de tratamiento de datos (módulo consent). Va en el perfil
+ * de GET /me y de las respuestas de login, refresh y cambio de modo.
+ */
+export type ConsentStatusReader = (userId: string) => Promise<ConsentStatus>;
 
 // --- Modo activo (HU-104) ---
 
