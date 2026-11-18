@@ -228,7 +228,7 @@ describe('selección de proveedor (composition)', () => {
       MissingConfigError,
     );
     expect(() => buildEmailSender({ ...base, BREVO_API_KEY: ' ' })).toThrow(/BREVO_API_KEY/);
-    expect(() => buildEmailSender({ ...base, EMAIL_FROM: '' })).toThrow(/var EMAIL_FROM/);
+    expect(() => buildEmailSender({ ...base, EMAIL_FROM: '' })).toThrow(/secreto EMAIL_FROM/);
     expect(() => buildEmailSender({ ...base, EMAIL_PROVIDER: 'resend' })).toThrow(
       /secreto RESEND_API_KEY.*wrangler secret put/,
     );
