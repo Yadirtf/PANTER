@@ -21,7 +21,8 @@ function apiWith(response: () => Response) {
 async function renderPage(response: () => Response, query = '') {
   const { fetchMock, admin } = apiWith(response);
   const load = await loadAdminUsers(admin, TOKENS, query);
-  if (load.kind === 'renew') throw new Error('No se esperaba renovar la sesión');
+  if (load.kind === 'renew' || load.kind === 'consent')
+    throw new Error(`Carga inesperada: ${load.kind}`);
   const html = renderToString(
     <AdminUsersView query={query} load={load} currentUserId={ADMIN_ID} />,
   );
@@ -101,5 +102,10 @@ describe('/admin/usuarios (render del servidor)', () => {
     expect(await loadAdminUsers(admin, TOKENS, '')).toEqual({ kind: 'renew' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(await loadAdminUsers(admin, { refreshToken: REFRESH }, '')).toEqual({ kind: 'renew' });
+  });
+
+  it('lleva al aviso de privacidad si la API responde CONSENT_REQUIRED (HU-109)', async () => {
+    const { admin } = apiWith(() => apiError(403, ApiErrorCode.CONSENT_REQUIRED));
+    expect(await loadAdminUsers(admin, TOKENS, '')).toEqual({ kind: 'consent' });
   });
 });

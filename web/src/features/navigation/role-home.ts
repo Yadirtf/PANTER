@@ -31,6 +31,10 @@ export const LOGIN_PATH = '/login';
 export const FORBIDDEN_PATH = '/prohibido';
 /** Página 403 para una sesión sin roles de personal (pasajeros y conductores). */
 export const STAFF_ONLY_PATH = '/solo-personal';
+/** Aviso de privacidad y aceptación del personal en el primer ingreso (HU-109). */
+export const CONSENT_PATH = '/consentimiento';
+/** Aviso de privacidad público (HU-109). */
+export const PRIVACY_PATH = '/privacidad';
 
 function matchesPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
@@ -114,6 +118,7 @@ export type AccessDecision =
  * - Sesión sin roles de personal → aviso "usa la app PANTER" (403).
  * - Rol que no corresponde → 403.
  * - /login con sesión de personal → panel del rol (o `next` si corresponde).
+ * - /consentimiento exige sesión de personal (el middleware decide además si ya aceptó).
  */
 export function decideAccess(
   pathname: string,
@@ -124,6 +129,11 @@ export function decideAccess(
     if (!roles) return { kind: 'allow' };
     const target = postLoginPath(roles, new URLSearchParams(search).get('next'));
     return target ? { kind: 'redirect', to: target } : { kind: 'staff-only' };
+  }
+
+  if (pathname === CONSENT_PATH) {
+    if (!roles) return { kind: 'login', next: `${pathname}${search}` };
+    return staffRolesOf(roles).length === 0 ? { kind: 'staff-only' } : { kind: 'allow' };
   }
 
   const panel = panelForPath(pathname);

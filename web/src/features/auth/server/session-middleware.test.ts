@@ -1,9 +1,10 @@
-import { ApiErrorCode, Role, type TokenPairResponse } from '@panter/contracts';
+import { ApiErrorCode, Role, type MeResponse, type TokenPairResponse } from '@panter/contracts';
 import type { FetchImplementation } from 'jose';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { ApiError, ClientErrorCode } from '@/shared/api/errors';
 import { createApiJwks, verifyAccessToken } from './access-token';
-import { ACCESS_COOKIE, REFRESH_COOKIE } from './cookies';
+import { consentCookieValue } from './consent-gate';
+import { ACCESS_COOKIE, CONSENT_COOKIE, REFRESH_COOKIE } from './cookies';
 import { createSessionMiddleware } from './session-middleware';
 import {
   API_URL,
@@ -14,6 +15,7 @@ import {
   signAccessToken,
   tokenPair,
   WEB_ORIGIN,
+  USER_ID,
   type TestKeys,
 } from './test-helpers';
 
@@ -33,6 +35,7 @@ function jwksFetch(response: () => Response = () => jsonResponse(keys.jwks)) {
 function setup(
   options: {
     refresh?: (token: string) => Promise<TokenPairResponse>;
+    me?: (accessToken: string) => Promise<MeResponse>;
     jwks?: ReturnType<typeof jwksFetch>;
   } = {},
 ) {
@@ -40,11 +43,15 @@ function setup(
   const refresh = vi.fn<(token: string) => Promise<TokenPairResponse>>(
     options.refresh ?? (() => Promise.reject(new Error('refresh no esperado'))),
   );
+  // Por defecto, una API que todavía no envía `consent` (campo opcional): no bloquea.
+  const me = vi.fn<(accessToken: string) => Promise<MeResponse>>(
+    options.me ?? (async () => (await tokenPair(keys, [Role.ADMIN])).user),
+  );
   const middleware = createSessionMiddleware({
-    api: { refresh },
+    api: { refresh, me },
     keys: createApiJwks(API_URL, fetchJwks),
   });
-  return { middleware, refresh, fetchJwks };
+  return { middleware, refresh, me, fetchJwks };
 }
 
 const isNext = (response: Response) => response.headers.get('x-middleware-next') === '1';
@@ -99,15 +106,21 @@ describe('verifyAccessToken', () => {
 
 describe('middleware: acceso por rol con sesión válida', () => {
   it('deja pasar al rol que corresponde, sin tocar cookies', async () => {
-    const { middleware, refresh } = setup();
+    const { middleware, refresh, me } = setup();
     const token = await signAccessToken(keys, { roles: [Role.DISPATCHER] });
 
-    const response = await middleware(pageRequest('/despacho', { [ACCESS_COOKIE]: token }));
+    const response = await middleware(
+      pageRequest('/despacho', {
+        [ACCESS_COOKIE]: token,
+        [CONSENT_COOKIE]: consentCookieValue(USER_ID),
+      }),
+    );
 
     expect(isNext(response)).toBe(true);
     expect(response.headers.getSetCookie()).toEqual([]);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(refresh).not.toHaveBeenCalled();
+    expect(me).not.toHaveBeenCalled();
   });
 
   it('ADMIN entra también a /despacho y /operador', async () => {

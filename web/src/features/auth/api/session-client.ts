@@ -26,6 +26,15 @@ export function verifyCode(body: {
   return client().post(SessionRoutes.OTP_VERIFY, { schema: SessionNavigationSchema, body });
 }
 
+/** Acepta la versión vigente del aviso de privacidad (HU-109). */
+export function acceptConsent(body: {
+  version: string;
+  accepted: true;
+  next?: string;
+}): Promise<SessionNavigation> {
+  return client().post(SessionRoutes.CONSENT, { schema: SessionNavigationSchema, body });
+}
+
 export function logout(): Promise<SessionNavigation> {
   return client().post(SessionRoutes.LOGOUT, { schema: SessionNavigationSchema });
 }

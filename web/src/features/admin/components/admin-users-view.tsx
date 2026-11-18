@@ -9,7 +9,7 @@ export function AdminUsersView({
   currentUserId,
 }: {
   query: string;
-  load: Exclude<AdminUsersLoad, { kind: 'renew' }>;
+  load: Extract<AdminUsersLoad, { kind: 'ok' | 'error' }>;
   currentUserId: string;
 }) {
   return (
