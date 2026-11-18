@@ -7,6 +7,10 @@ export const ClientErrorCode = {
   NETWORK_ERROR: 'NETWORK_ERROR',
   /** La API respondió algo que no cumple el contrato de @panter/contracts. */
   INVALID_RESPONSE: 'INVALID_RESPONSE',
+  /** El usuario no aceptó el aviso de privacidad y la app cerró la sesión (HU-109). */
+  CONSENT_DECLINED: 'CONSENT_DECLINED',
+  /** La API exige una versión del aviso que esta versión de la app no trae: hay que actualizarla. */
+  CONSENT_APP_OUTDATED: 'CONSENT_APP_OUTDATED',
 } as const;
 export type ClientErrorCode = (typeof ClientErrorCode)[keyof typeof ClientErrorCode];
 

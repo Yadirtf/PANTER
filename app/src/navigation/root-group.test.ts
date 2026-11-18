@@ -1,8 +1,15 @@
-import { type ActiveMode, type MeResponse, Role } from '@panter/contracts';
+import {
+  type ActiveMode,
+  type ConsentStatus,
+  type MeResponse,
+  PRIVACY_POLICY_VERSION,
+  Role,
+} from '@panter/contracts';
 import { describe, expect, it } from 'vitest';
 import { makeUser } from '../test/fake-api';
 import {
   canSwitchMode,
+  needsConsent,
   resolveRootGroup,
   ROOT_GROUPS,
   type RootGroup,
@@ -11,15 +18,35 @@ import {
 
 const { PASSENGER: P, DRIVER: D, ADMIN: A, DISPATCHER: S, TOUR_OPERATOR: T } = Role;
 
-function signedIn(roles: Role[], activeMode: ActiveMode): RootSession {
-  const user: MeResponse = makeUser({ roles, activeMode });
+function signedIn(roles: Role[], activeMode: ActiveMode, consent?: ConsentStatus): RootSession {
+  const user: MeResponse = makeUser({ roles, activeMode, ...(consent ? { consent } : {}) });
   return { status: 'signedIn', user, activeMode };
 }
+
+const PENDING: ConsentStatus = {
+  currentVersion: PRIVACY_POLICY_VERSION,
+  acceptedVersion: null,
+  acceptedAt: null,
+  required: true,
+};
+const NEW_VERSION: ConsentStatus = {
+  currentVersion: PRIVACY_POLICY_VERSION,
+  acceptedVersion: '2026-01-v0',
+  acceptedAt: '2026-01-10T15:00:00.000Z',
+  required: true,
+};
+const ACCEPTED: ConsentStatus = {
+  currentVersion: PRIVACY_POLICY_VERSION,
+  acceptedVersion: PRIVACY_POLICY_VERSION,
+  acceptedAt: '2026-11-18T15:00:00.000Z',
+  required: false,
+};
 
 describe('resolveRootGroup', () => {
   it('declara los grupos de rutas', () => {
     expect(ROOT_GROUPS).toEqual([
       '(auth)',
+      '(consent)',
       '(web-only)',
       '(onboarding)',
       '(passenger)',
@@ -76,9 +103,57 @@ describe('resolveRootGroup', () => {
     }
   });
 
+  // Tabla: consentimiento × roles × modo. Pendiente → (consent) antes que cualquier otro grupo;
+  // aceptado o sin el campo (API anterior a HU-109) → navegación normal.
+  it.each<[string, ConsentStatus | undefined, Role[], ActiveMode, RootGroup]>([
+    ['nunca aceptó', PENDING, [P], 'passenger', '(consent)'],
+    ['nunca aceptó', PENDING, [P], 'driver', '(consent)'],
+    ['nunca aceptó', PENDING, [P, D], 'driver', '(consent)'],
+    ['nunca aceptó', PENDING, [D], 'passenger', '(consent)'],
+    ['nunca aceptó', PENDING, [A], 'passenger', '(consent)'],
+    ['nunca aceptó', PENDING, [P, D, A, S, T], 'driver', '(consent)'],
+    ['versión nueva', NEW_VERSION, [P], 'passenger', '(consent)'],
+    ['versión nueva', NEW_VERSION, [P, D], 'driver', '(consent)'],
+    ['versión nueva', NEW_VERSION, [S, T], 'passenger', '(consent)'],
+    ['aceptado', ACCEPTED, [P], 'passenger', '(passenger)'],
+    ['aceptado', ACCEPTED, [P], 'driver', '(onboarding)'],
+    ['aceptado', ACCEPTED, [P, D], 'driver', '(driver)'],
+    ['aceptado', ACCEPTED, [A], 'driver', '(web-only)'],
+    ['sin consent', undefined, [P], 'passenger', '(passenger)'],
+    ['sin consent', undefined, [P, D], 'driver', '(driver)'],
+    ['sin consent', undefined, [A], 'passenger', '(web-only)'],
+  ])('consentimiento %s, roles %j en modo %s → %s', (_name, consent, roles, mode, expected) => {
+    expect(resolveRootGroup(signedIn(roles, mode, consent))).toBe(expected);
+  });
+
+  it('sin sesión gana sobre el consentimiento pendiente', () => {
+    const user = makeUser({ consent: PENDING });
+    expect(resolveRootGroup({ status: 'signedOut', user, activeMode: null })).toBe('(auth)');
+    expect(resolveRootGroup({ status: 'loading', user, activeMode: null })).toBe('(auth)');
+  });
+
+  it('con consentimiento pendiente, las 31 combinaciones de roles van a (consent)', () => {
+    const all = [P, D, A, S, T];
+    for (let mask = 1; mask < 1 << all.length; mask += 1) {
+      const roles = all.filter((_, i) => mask & (1 << i));
+      for (const mode of ['passenger', 'driver'] as const) {
+        expect(resolveRootGroup(signedIn(roles, mode, PENDING)), roles.join('+')).toBe('(consent)');
+      }
+    }
+  });
+
   it('usa el activeMode del store (el del token) por encima del guardado en user', () => {
     const user = makeUser({ roles: [P, D], activeMode: 'passenger' });
     expect(resolveRootGroup({ status: 'signedIn', user, activeMode: 'driver' })).toBe('(driver)');
+  });
+});
+
+describe('needsConsent', () => {
+  it('solo cuando la API marca required', () => {
+    expect(needsConsent({ consent: PENDING })).toBe(true);
+    expect(needsConsent({ consent: NEW_VERSION })).toBe(true);
+    expect(needsConsent({ consent: ACCEPTED })).toBe(false);
+    expect(needsConsent({})).toBe(false);
   });
 });
 
