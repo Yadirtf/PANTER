@@ -1,7 +1,10 @@
 import type { Env } from '../env';
+import { makeGetMe, makeSwitchMode } from '../modules/auth/application/me';
 import type {
   AccessTokenVerifier,
+  ActiveTripChecker,
   Clock,
+  DriverAvailability,
   OtpDelivery,
   UserRepository,
 } from '../modules/auth/application/ports';
@@ -14,6 +17,7 @@ import {
   type IssueSession,
 } from '../modules/auth/application/session';
 import { makeVerifyOtp } from '../modules/auth/application/verify-otp';
+import type { MeFactories } from '../modules/auth/http/me-routes';
 import type { AuthFactories } from '../modules/auth/http/routes';
 import { makeRequireAuth } from '../modules/auth/http/require-auth';
 import { createDrizzleUserRepository } from '../modules/auth/infrastructure/drizzle-user-repository';
@@ -24,6 +28,10 @@ import {
   createJoseAccessTokenVerifier,
 } from '../modules/auth/infrastructure/jose-access-tokens';
 import { createKvOtpStore } from '../modules/auth/infrastructure/kv-otp-store';
+import {
+  noActiveTrips,
+  noopDriverAvailability,
+} from '../modules/auth/infrastructure/pending-adapters';
 import {
   createKvRefreshTokenStore,
   createRefreshTokenCodec,
@@ -64,14 +72,23 @@ export const requireAuth = makeRequireAuth((env) => buildAccessTokenVerifier(env
 export interface AuthOverrides {
   users?: (env: Env) => UserRepository;
   deliver?: (env: Env) => OtpDelivery;
+  /** Por defecto `noActiveTrips` hasta HU-602. */
+  activeTrips?: (env: Env) => ActiveTripChecker;
+  /** Por defecto `noopDriverAvailability` hasta HU-201. */
+  driverAvailability?: (env: Env) => DriverAvailability;
   clock?: Clock;
 }
 
+/** Fábricas del login (AuthFactories) y de la sesión actual (/me, MeFactories). */
+export type IdentityFactories = AuthFactories & MeFactories;
+
 /** Raíz de composición del módulo auth. Cada fábrica se llama dentro del handler. */
-export function buildAuthFactories(overrides: AuthOverrides = {}): AuthFactories {
+export function buildAuthFactories(overrides: AuthOverrides = {}): IdentityFactories {
   const { clock } = overrides;
   const users = overrides.users ?? ((env: Env) => createDrizzleUserRepository(buildDb(env)));
   const deliver = overrides.deliver ?? ((env: Env) => buildSendOtpEmail(env));
+  const activeTrips = overrides.activeTrips ?? (() => noActiveTrips);
+  const driverAvailability = overrides.driverAvailability ?? (() => noopDriverAvailability);
   const otpStore = (env: Env) => createKvOtpStore(env.KV, clock);
   const refreshStore = (env: Env) => createKvRefreshTokenStore(env.KV, clock);
   const codec = createRefreshTokenCodec();
@@ -125,5 +142,15 @@ export function buildAuthFactories(overrides: AuthOverrides = {}): AuthFactories
       }),
     logout: (env) => makeLogout({ refreshStore: refreshStore(env), codec, clock }),
     jwks: (env) => () => buildJwks(jwtPublicKey(env), jwtKid(env)),
+    getMe: (env) => makeGetMe({ users: users(env) }),
+    switchMode: (env) =>
+      makeSwitchMode({
+        users: users(env),
+        activeTrips: activeTrips(env),
+        driverAvailability: driverAvailability(env),
+        refreshStore: refreshStore(env),
+        issueSession: issueSession(env),
+        clock,
+      }),
   };
 }

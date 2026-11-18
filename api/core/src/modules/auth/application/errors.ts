@@ -46,6 +46,22 @@ export const AuthErrors = {
       'Tu sesión ya no es válida. Ingresa de nuevo con tu correo.',
       { status: 401 },
     ),
+  forbidden: () =>
+    new AppError(ApiErrorCode.FORBIDDEN, 'No tienes permiso para realizar esta acción.', {
+      status: 403,
+    }),
+  modeNotAllowed: () =>
+    new AppError(
+      ApiErrorCode.MODE_NOT_ALLOWED,
+      'Esta opción no está disponible en tu modo actual o para tu cuenta.',
+      { status: 403 },
+    ),
+  modeChangeActiveTrip: () =>
+    new AppError(
+      ApiErrorCode.MODE_CHANGE_ACTIVE_TRIP,
+      'No puedes cambiar de modo mientras tienes un viaje en curso. Termina el viaje e intenta de nuevo.',
+      { status: 409 },
+    ),
   /** No está en contracts: los clientes lo muestran con el mensaje genérico del servidor. */
   emailDeliveryFailed: () =>
     new AppError(
