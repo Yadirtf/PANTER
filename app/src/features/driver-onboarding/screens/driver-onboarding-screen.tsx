@@ -1,9 +1,18 @@
 // Registro de conductor (HU-203). Se entra desde el modo pasajero ("Quiero ser conductor") o desde
-// (onboarding) al elegir el modo conductor sin estar aprobado.
+// (onboarding) al elegir el modo conductor sin estar aprobado. HU-205: la pantalla refleja el
+// estado de GET /drivers/me y lo refresca al volver a primer plano y al deslizar hacia abajo.
 import { ActiveMode } from '@panter/contracts';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  AppState,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { errorMessage } from '../../../shared/api/error-messages';
 import { toApiError } from '../../../shared/api/errors';
@@ -12,6 +21,8 @@ import { SignOutButton } from '../../auth/screens/sign-out-button';
 import { useSession } from '../../auth/session/session-context';
 import { documentRows, documentsProgress } from '../documents/document-states';
 import { onboardingController } from '../instance';
+import { onboardingView } from '../status/onboarding-status';
+import { isForegroundTransition, notifyDriverStatusChanged } from '../status/status-events';
 import { useOnboardingState, useUploadQueue } from '../use-driver-onboarding';
 import {
   displayPlate,
@@ -20,6 +31,7 @@ import {
   vehicleFormFromProfile,
 } from '../vehicle/vehicle-form';
 import { DocumentsStep } from './documents-step';
+import { NoticeBanner, StatusPanel } from './status-panel';
 import { VehicleStep } from './vehicle-step';
 
 export type OnboardingEntry =
@@ -33,13 +45,22 @@ export function DriverOnboardingScreen({ entry }: { entry: OnboardingEntry }) {
   const uploads = useUploadQueue();
   const [editingVehicle, setEditingVehicle] = useState(false);
 
+  const appState = useRef<string | null>(AppState.currentState ?? null);
+
   useEffect(() => {
     void onboardingController.refresh();
+    // Al volver a primer plano: el administrador pudo revisar la solicitud mientras tanto.
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (isForegroundTransition(appState.current, next)) notifyDriverStatusChanged('foreground');
+      appState.current = next;
+    });
+    return () => subscription.remove();
   }, []);
 
   const { profile } = state;
   const rows = documentRows(profile, uploads.items);
   const progress = documentsProgress(rows);
+  const view = onboardingView(profile, rows);
 
   let content: React.ReactNode;
   if (state.status === 'idle' || state.status === 'loading') {
@@ -53,18 +74,21 @@ export function DriverOnboardingScreen({ entry }: { entry: OnboardingEntry }) {
         <Button title="Reintentar" onPress={() => void onboardingController.refresh()} />
       </View>
     );
-  } else if (!profile || editingVehicle) {
+  } else if (view.kind === 'notApplied' || !profile || editingVehicle) {
     content = (
       <VehicleStep
         initialValues={profile ? vehicleFormFromProfile(profile) : EMPTY_VEHICLE_FORM}
+        submitLabel={profile ? 'Enviar corrección' : 'Continuar'}
         onDone={() => setEditingVehicle(false)}
         onCancel={profile ? () => setEditingVehicle(false) : undefined}
       />
     );
   } else {
     const option = VEHICLE_TYPE_OPTIONS.find((o) => o.type === profile.vehicle.vehicleType);
+    const showDocuments = view.kind === 'pending' || view.kind === 'rejected';
     content = (
       <View style={styles.block}>
+        <StatusPanel view={view} onCorrectVehicle={() => setEditingVehicle(true)} />
         <View style={styles.vehicle}>
           <Text style={styles.vehicleTitle}>
             {option?.label ?? profile.vehicle.vehicleType} · {displayPlate(profile.vehicle.plate)}
@@ -75,19 +99,44 @@ export function DriverOnboardingScreen({ entry }: { entry: OnboardingEntry }) {
           </Text>
         </View>
         {state.error ? <ErrorMessage>{state.error}</ErrorMessage> : null}
-        <DocumentsStep rows={rows} progress={progress} online={uploads.online} />
+        {showDocuments ? (
+          <DocumentsStep
+            rows={rows}
+            progress={progress}
+            online={uploads.online}
+            // Tras un rechazo solo se vuelven a subir los documentos rechazados o faltantes.
+            onlyTypes={view.kind === 'rejected' ? view.toFix : undefined}
+          />
+        ) : null}
       </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={state.refreshing}
+            onRefresh={() => notifyDriverStatusChanged('pull')}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+      >
         <Text style={styles.title}>Registro de conductor</Text>
         <Text style={styles.subtitle}>
           Registra tu vehículo y fotografía tus documentos. Un administrador de PANTER los revisa
           antes de habilitarte el modo conductor.
         </Text>
+        {state.notice ? (
+          <NoticeBanner
+            notice={state.notice}
+            onDismiss={() => onboardingController.dismissNotice()}
+          />
+        ) : null}
         {content}
         <ExitActions entry={entry} />
       </ScrollView>
