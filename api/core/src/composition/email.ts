@@ -55,7 +55,7 @@ export function buildEmailSender(env: EmailEnv, fetchFn?: FetchLike): EmailSende
   const primaryName = parseProvider(env.EMAIL_PROVIDER);
   const secondaryName: EmailProvider = primaryName === 'brevo' ? 'resend' : 'brevo';
   const from = {
-    fromEmail: requireConfig(env.EMAIL_FROM, 'EMAIL_FROM', 'var'),
+    fromEmail: requireConfig(env.EMAIL_FROM, 'EMAIL_FROM', 'secreto'),
     fromName: env.EMAIL_FROM_NAME?.trim() || DEFAULT_FROM_NAME,
   };
   const primaryKey = requireConfig(
