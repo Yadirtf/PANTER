@@ -13,6 +13,7 @@ import type {
   Clock,
   ConsentStatusReader,
   DriverAvailability,
+  DriverModeEligibility,
   RefreshTokenStore,
   UserRepository,
 } from './ports';
@@ -47,6 +48,8 @@ export interface SwitchModeDeps {
   users: UserRepository;
   activeTrips: ActiveTripChecker;
   driverAvailability: DriverAvailability;
+  /** Verificación APPROVED del conductor (módulo drivers, HU-201). */
+  driverEligibility: DriverModeEligibility;
   refreshStore: RefreshTokenStore;
   issueSession: IssueSession;
   clock?: Clock;
@@ -57,10 +60,12 @@ export type SwitchMode = (actor: Actor, input: SwitchModeBody) => Promise<Switch
 /**
  * POST /me/mode (HU-104, §5.3): cambia el modo activo y emite un par de tokens nuevo.
  *
- * - `driver` sin el rol DRIVER (según la base de datos, no el token) → 403 `MODE_NOT_ALLOWED`.
+ * - `driver` sin el rol DRIVER (según la base de datos, no el token) o sin la verificación
+ *   APPROVED (p. ej. SUSPENDED, HU-204) → 403 `MODE_NOT_ALLOWED`.
  * - Cambio real de modo con un viaje en curso → 409 `MODE_CHANGE_ACTIVE_TRIP`. Pedir el mismo
  *   modo en el que ya está no es un cambio: solo reemite los tokens.
- * - Al pasar a `passenger` el conductor queda no disponible (`DriverAvailability`).
+ * - Al pasar a `passenger` el conductor queda no disponible (`DriverAvailability`: OFFLINE).
+ *   Solo aplica a cuentas con el rol DRIVER (un pasajero no tiene disponibilidad que apagar).
  * - Rotación: el access token trae `rid` (hash del refresh token de su par). El par nuevo se
  *   emite en la misma familia (sesión) con el modo nuevo guardado en el refresh, y el refresh
  *   anterior queda marcado como rotado: si alguien lo usa después, se detecta la reutilización
@@ -72,7 +77,11 @@ export function makeSwitchMode(deps: SwitchModeDeps): SwitchMode {
   const now = deps.clock ?? Date.now;
   return async (actor, { mode }) => {
     const user = await loadActiveUser(deps.users, actor);
-    if (mode === ActiveMode.DRIVER && !user.roles.includes(Role.DRIVER)) {
+    if (
+      mode === ActiveMode.DRIVER &&
+      (!user.roles.includes(Role.DRIVER) ||
+        !(await deps.driverEligibility.canUseDriverMode(user.id)))
+    ) {
       throw AuthErrors.modeNotAllowed();
     }
     if (mode !== actor.activeMode && (await deps.activeTrips.hasActiveTrip(user.id))) {
@@ -89,7 +98,9 @@ export function makeSwitchMode(deps: SwitchModeDeps): SwitchMode {
       if (closed) throw AuthErrors.refreshTokenInvalid();
     }
 
-    if (mode === ActiveMode.PASSENGER) await deps.driverAvailability.setUnavailable(user.id);
+    if (mode === ActiveMode.PASSENGER && user.roles.includes(Role.DRIVER)) {
+      await deps.driverAvailability.setUnavailable(user.id);
+    }
 
     const pair = await deps.issueSession(user, mode, previous?.familyId);
     // Se marca al final: si algo falla antes, el refresh anterior sigue sirviendo.

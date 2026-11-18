@@ -8,10 +8,7 @@ import {
 } from '../../../src/modules/auth/application/session';
 import type { Actor } from '../../../src/modules/auth/domain/actor';
 import { hasAnyRole, isInMode } from '../../../src/modules/auth/domain/authorization';
-import {
-  noActiveTrips,
-  noopDriverAvailability,
-} from '../../../src/modules/auth/infrastructure/pending-adapters';
+import { noActiveTrips } from '../../../src/modules/auth/infrastructure/pending-adapters';
 import { AppError } from '../../../src/shared/errors/app-error';
 import {
   fakeCodec,
@@ -52,10 +49,14 @@ function setup(options: { activeTrip?: boolean } = {}) {
   });
   const activeTrips: ActiveTripChecker = { hasActiveTrip: vi.fn(async () => !!options.activeTrip) };
   const driverAvailability = { setUnavailable: vi.fn(async () => {}) };
+  // HU-201: conductores sin verificación APPROVED (p. ej. SUSPENDED por un ADMIN).
+  const notApproved = new Set<string>();
+  const driverEligibility = { canUseDriverMode: vi.fn(async (id: string) => !notApproved.has(id)) };
   const switchMode = makeSwitchMode({
     users,
     activeTrips,
     driverAvailability,
+    driverEligibility,
     refreshStore,
     issueSession,
     clock: clock.now,
@@ -66,6 +67,7 @@ function setup(options: { activeTrip?: boolean } = {}) {
     users,
     issueSession,
     clock: clock.now,
+    driverEligibility,
   });
 
   /** Inicia sesión y devuelve el actor que tendría su access token. */
@@ -89,6 +91,8 @@ function setup(options: { activeTrip?: boolean } = {}) {
     refreshStore,
     activeTrips,
     driverAvailability,
+    driverEligibility,
+    notApproved,
     switchMode,
     refresh,
     signIn,
@@ -107,9 +111,8 @@ describe('autorización (dominio)', () => {
     expect(isInMode(actor, ActiveMode.DRIVER)).toBe(false);
   });
 
-  it('adaptadores provisionales: sin viajes en curso y disponibilidad no-op', async () => {
+  it('adaptador provisional: sin viajes en curso', async () => {
     expect(await noActiveTrips.hasActiveTrip('u')).toBe(false);
-    await expect(noopDriverAvailability.setUnavailable('u')).resolves.toBeUndefined();
   });
 });
 
@@ -206,6 +209,44 @@ describe('POST /me/mode', () => {
     expect([err.code, err.status]).toEqual([ApiErrorCode.MODE_NOT_ALLOWED, 403]);
   });
 
+  it('HU-201: DRIVER con verificación no APPROVED (SUSPENDED) → 403 MODE_NOT_ALLOWED', async () => {
+    const { users, signIn, switchMode, notApproved, driverEligibility, refreshStore } = setup();
+    const user = users.add('suspendido@panter.test', 'ACTIVE', driverRoles);
+    notApproved.add(user.id);
+    const { pair, actor } = await signIn(user);
+    const err = await errorOf(switchMode(actor, { mode: ActiveMode.DRIVER }));
+    expect([err.code, err.status]).toEqual([ApiErrorCode.MODE_NOT_ALLOWED, 403]);
+    expect(driverEligibility.canUseDriverMode).toHaveBeenCalledWith(user.id);
+    expect(refreshStore.records.get(`sha(${pair.refreshToken})`)?.rotated).toBeUndefined();
+  });
+
+  it('HU-201: sin el rol DRIVER ni siquiera consulta la verificación', async () => {
+    const { users, signIn, switchMode, driverEligibility } = setup();
+    const user = users.add('p@panter.test');
+    const { actor } = await signIn(user);
+    await errorOf(switchMode(actor, { mode: ActiveMode.DRIVER }));
+    expect(driverEligibility.canUseDriverMode).not.toHaveBeenCalled();
+  });
+
+  it('HU-201: un pasajero sin DRIVER no apaga disponibilidad al pedir passenger', async () => {
+    const { users, signIn, switchMode, driverAvailability } = setup();
+    const user = users.add('p@panter.test');
+    const { actor } = await signIn(user, ActiveMode.DRIVER);
+    await switchMode(actor, { mode: ActiveMode.PASSENGER });
+    expect(driverAvailability.setUnavailable).not.toHaveBeenCalled();
+  });
+
+  it('HU-201: si lo suspenden en modo driver, el refresh sale en modo passenger', async () => {
+    const { users, signIn, switchMode, refresh, notApproved } = setup();
+    const user = users.add('d@panter.test', 'ACTIVE', driverRoles);
+    const { actor } = await signIn(user);
+    const driver = await switchMode(actor, { mode: ActiveMode.DRIVER });
+    notApproved.add(user.id);
+    const renewed = await refresh({ refreshToken: driver.refreshToken });
+    expect(renewed.user.activeMode).toBe('passenger');
+    expect(claimsOf(renewed.accessToken).activeMode).toBe('passenger');
+  });
+
   it('con un viaje en curso → 409 MODE_CHANGE_ACTIVE_TRIP sin tocar la sesión', async () => {
     const { users, signIn, switchMode, refreshStore, driverAvailability } = setup({
       activeTrip: true,
@@ -297,7 +338,8 @@ describe('POST /me/mode', () => {
     const switchMode = makeSwitchMode({
       users,
       activeTrips: noActiveTrips,
-      driverAvailability: noopDriverAvailability,
+      driverAvailability: { setUnavailable: async () => {} },
+      driverEligibility: { canUseDriverMode: async () => true },
       refreshStore,
       issueSession,
     });

@@ -1,6 +1,10 @@
 import { buildAdminFactories } from './composition/admin';
 import { buildAuthFactories, requireAuth, type IdentityFactories } from './composition/auth';
 import { buildConsentFactories } from './composition/consent';
+// HU-201/202/204: conductores
+import { buildDriverFactories } from './composition/drivers';
+import { driverRoutes, type DriverFactories } from './modules/drivers/http/routes';
+import { makeRequireConsent } from './modules/consent/http/require-consent';
 import { buildGetHealth } from './composition/health';
 import { adminRoutes, type AdminFactories } from './modules/admin/http/routes';
 import { consentRoutes, type ConsentFactories } from './modules/consent/http/routes';
@@ -16,6 +20,8 @@ export interface AppDeps {
   auth: IdentityFactories;
   admin: AdminFactories;
   consent: ConsentFactories;
+  /** HU-201/202/204: conductores. */
+  drivers: DriverFactories;
 }
 
 /**
@@ -27,6 +33,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     auth: overrides.auth ?? buildAuthFactories(),
     admin: overrides.admin ?? buildAdminFactories(),
     consent: overrides.consent ?? buildConsentFactories(),
+    drivers: overrides.drivers ?? buildDriverFactories(),
   };
   const app = createRouter();
 
@@ -39,6 +46,9 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   app.route('/', meRoutes(deps.auth, requireAuth));
   app.route('/', adminRoutes(deps.admin, requireAuth));
   app.route('/', consentRoutes(deps.consent, requireAuth));
+  // HU-201/202/204: conductores (solicitud, documentos y revisión por ADMIN).
+  const requireConsent = makeRequireConsent(deps.consent.consentStatus);
+  app.route('/', driverRoutes(deps.drivers, { requireAuth, requireConsent }));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
   // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).

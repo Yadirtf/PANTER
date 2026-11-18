@@ -12,7 +12,8 @@ import { defineConfig } from 'vitest/config';
 //
 // Cobertura con @vitest/coverage-istanbul: istanbul instrumenta el código al transformarlo, así
 // que funciona también dentro de workerd (coverage-v8 no, porque necesita el inspector de Node).
-// Los umbrales por carpeta hacen fallar `pnpm test` si baja la cobertura de auth, email, admin y consent.
+// Los umbrales por carpeta hacen fallar `pnpm test` si baja la cobertura de auth, email, admin,
+// consent y drivers.
 const CRITICAL = { statements: 90, branches: 85, functions: 90, lines: 90 };
 
 export default defineConfig({
@@ -28,6 +29,8 @@ export default defineConfig({
         'src/modules/auth/**': CRITICAL,
         'src/modules/admin/**': CRITICAL,
         'src/modules/consent/**': CRITICAL,
+        // HU-201/202/204: onboarding de conductores.
+        'src/modules/drivers/**': CRITICAL,
       },
     },
     projects: [
@@ -58,7 +61,14 @@ export default defineConfig({
             },
           }),
         ],
-        test: { name: 'workers', include: ['test/**/*.test.ts'], exclude: ['test/unit/**'] },
+        test: {
+          name: 'workers',
+          include: ['test/**/*.test.ts'],
+          exclude: ['test/unit/**'],
+          // HU-201: la primera petición a `exports.default` carga el Worker instrumentado por
+          // istanbul; con más módulos pasa de los 5 s por defecto en máquinas cargadas.
+          testTimeout: 20_000,
+        },
       },
     ],
   },
