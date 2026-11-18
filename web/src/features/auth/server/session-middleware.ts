@@ -1,4 +1,4 @@
-import { ApiErrorCode, type AccessTokenClaims, type TokenPairResponse } from '@panter/contracts';
+import type { AccessTokenClaims, TokenPairResponse } from '@panter/contracts';
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   decideAccess,
@@ -9,28 +9,13 @@ import {
 import { isApiError } from '@/shared/api/errors';
 import { verifyAccessToken, type AccessTokenKeys } from './access-token';
 import { ACCESS_COOKIE, clearSessionCookies, REFRESH_COOKIE, setSessionCookies } from './cookies';
+import { createRefreshCoordinator, isSessionRejected } from './session-call';
 import type { SessionApi } from './session-api';
 
 export interface SessionMiddlewareDeps {
   api: Pick<SessionApi, 'refresh'>;
   keys: AccessTokenKeys;
 }
-
-/** Respuestas de refresh que significan "la sesión ya no es válida": se borran las cookies. */
-const SESSION_REJECTED = new Set<string>([
-  ApiErrorCode.REFRESH_TOKEN_INVALID,
-  ApiErrorCode.UNAUTHENTICATED,
-  ApiErrorCode.TOKEN_EXPIRED,
-  ApiErrorCode.ACCOUNT_SUSPENDED,
-]);
-
-/**
- * Cuánto se reutiliza el resultado de un refresh para el mismo refresh token. El refresh token
- * rota en cada uso, así que varias peticiones simultáneas del mismo navegador (prefetch de
- * enlaces, pestañas) no deben gastarlo dos veces dentro del mismo isolate.
- */
-const REFRESH_REUSE_MS = 30 * 1000;
-const REFRESH_CACHE_MAX = 500;
 
 type SessionState =
   | { kind: 'none'; clearCookies: boolean }
@@ -41,24 +26,7 @@ type SessionState =
  * API, lo refresca si venció y aplica la matriz de acceso por rol.
  */
 export function createSessionMiddleware(deps: SessionMiddlewareDeps) {
-  const recentRefreshes = new Map<string, { at: number; result: Promise<TokenPairResponse> }>();
-
-  function refreshOnce(refreshToken: string): Promise<TokenPairResponse> {
-    const now = Date.now();
-    const cached = recentRefreshes.get(refreshToken);
-    if (cached && now - cached.at < REFRESH_REUSE_MS) return cached.result;
-
-    for (const [token, entry] of recentRefreshes) {
-      if (now - entry.at >= REFRESH_REUSE_MS || recentRefreshes.size >= REFRESH_CACHE_MAX) {
-        recentRefreshes.delete(token);
-      }
-    }
-    const result = deps.api.refresh(refreshToken);
-    recentRefreshes.set(refreshToken, { at: now, result });
-    // Un fallo no se reutiliza: la siguiente petición vuelve a intentar.
-    result.catch(() => recentRefreshes.delete(refreshToken));
-    return result;
-  }
+  const refreshOnce = createRefreshCoordinator((token) => deps.api.refresh(token));
 
   async function resolveSession(request: NextRequest): Promise<SessionState> {
     const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -76,7 +44,7 @@ export function createSessionMiddleware(deps: SessionMiddlewareDeps) {
     try {
       tokens = await refreshOnce(refreshToken);
     } catch (error) {
-      const rejected = isApiError(error) && SESSION_REJECTED.has(error.code);
+      const rejected = isApiError(error) && isSessionRejected(error);
       return { kind: 'none', clearCookies: rejected };
     }
     const verified = await verifyAccessToken(tokens.accessToken, deps.keys);
