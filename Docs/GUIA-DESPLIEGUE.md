@@ -27,6 +27,7 @@ una APK de prueba instalable.
 | Tu computador + GitHub          | Llave de firma de la APK y APK de staging                               | 8    |
 | Brevo + Cloudflare → Worker     | Secretos y variables del login (M1)                                     | M1   |
 | Neon → SQL Editor               | Darte el rol ADMIN por primera vez                                      | M1   |
+| Cloudflare → Worker api-core    | Secreto `DOCUMENT_URL_SECRET` (documentos de conductores)               | M2   |
 
 **¿Y Firebase?** No se usa por ahora. La arquitectura v1.1 no usa Firebase para datos ni para
 autenticación (eso lo hacen Neon y el OTP por correo). Solo se necesitará en el hito M5
@@ -400,6 +401,36 @@ renueva sola). Los refresh tokens siguen funcionando, así que nadie tiene que v
 Sesiones: cada uso de `POST /auth/refresh` revoca el refresh token anterior. Si alguien
 reutiliza uno ya usado (posible robo), la API revoca toda esa sesión. `POST /auth/logout` solo
 necesita el refresh token. En KV se guarda el SHA-256 del refresh token, nunca el token.
+
+## M2 · Documentos de conductores
+
+Desde HU-202 los solicitantes suben las fotos de sus documentos (cédula, licencia, tarjeta de
+propiedad, SOAT y tecnomecánica) al bucket R2 **privado** `panter-documents-staging`, que ya
+existe (paso 3). No se crea nada nuevo en R2: el bucket **no** debe tener acceso público ni
+dominio propio (R2 → `panter-documents-staging` → **Settings** → **Public access**: deshabilitado).
+La app nunca habla con R2: la API entrega una URL firmada **del propio Worker**, válida 10
+minutos y una sola vez, y el Worker escribe en R2.
+
+| Nombre                | Tipo    | Dónde se carga                       | Para qué                                     |
+| --------------------- | ------- | ------------------------------------ | -------------------------------------------- |
+| `DOCUMENT_URL_SECRET` | Secreto | Cloudflare (o `wrangler secret put`) | Llave HMAC-SHA256 de las URLs de documentos  |
+
+1. Genéralo en tu computador: `openssl rand -hex 32` (64 caracteres hexadecimales). El mínimo
+   aceptado son 32 caracteres. Usa un valor **distinto** de `OTP_SECRET` y distinto por ambiente.
+2. Cárgalo en `panter-api-staging`:
+   - **Navegador:** Cloudflare → **Workers & Pages** → `panter-api-staging` → **Settings** →
+     **Variables and Secrets** → **Add** → tipo **Secret** → nombre `DOCUMENT_URL_SECRET` →
+     pega el valor → **Deploy**.
+   - **Terminal** (desde `api/core`): `pnpm exec wrangler secret put DOCUMENT_URL_SECRET --env staging`.
+3. Para producción, repite con otro valor en `panter-api`.
+
+Si falta, solo fallan las rutas de documentos (`500 INTERNAL_ERROR`; el log del Worker dice
+"Falta configurar el secreto DOCUMENT_URL_SECRET…"); `/health`, el login y la solicitud de
+conductor siguen funcionando. Si lo cambias, las URLs de subida emitidas en los
+últimos minutos dejan de servir y la app pide una nueva; los archivos ya subidos no se afectan.
+
+Límites (de `@panter/contracts`): JPG, PNG o WEBP de hasta 8 MB; la API comprueba el tipo real
+del archivo (sus primeros bytes), no solo lo que declara el teléfono.
 
 ## Darte el rol ADMIN por primera vez
 

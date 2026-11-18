@@ -60,6 +60,10 @@ export interface Env {
   JWT_PUBLIC_KEY?: string;
   /** Var: identificador de la llave (`kid` del header y del JWKS). Cambiarlo al rotar llaves. */
   JWT_KID?: string;
+
+  // --- Documentos de conductores (HU-202). Ver Docs/GUIA-DESPLIEGUE.md → "M2 · Documentos". ---
+  /** Secreto: llave HMAC-SHA256 de las URLs firmadas de documentos (`openssl rand -hex 32`). */
+  DOCUMENT_URL_SECRET?: string;
 }
 
 /** Tipo de contexto de Hono para toda la app. */
