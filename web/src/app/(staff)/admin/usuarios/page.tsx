@@ -5,6 +5,7 @@ import { AdminUsersView } from '@/features/admin/components/admin-users-view';
 import { ADMIN_USERS_PATH } from '@/features/admin/lib/users';
 import { adminApi } from '@/features/admin/server/deps';
 import { loadAdminUsers } from '@/features/admin/server/load-admin-users';
+import { consentPathFor } from '@/features/auth/server/consent-gate';
 import { ACCESS_COOKIE, REFRESH_COOKIE } from '@/features/auth/server/cookies';
 import { readSessionClaims } from '@/features/auth/server/current-session';
 
@@ -24,10 +25,9 @@ export default async function AdminUsersPage({
     { accessToken: jar.get(ACCESS_COOKIE)?.value, refreshToken: jar.get(REFRESH_COOKIE)?.value },
     query,
   );
-  if (load.kind === 'renew') {
-    const next = query ? `${ADMIN_USERS_PATH}?q=${encodeURIComponent(query)}` : ADMIN_USERS_PATH;
-    redirect(`/api/session/refresh?next=${encodeURIComponent(next)}`);
-  }
+  const next = query ? `${ADMIN_USERS_PATH}?q=${encodeURIComponent(query)}` : ADMIN_USERS_PATH;
+  if (load.kind === 'renew') redirect(`/api/session/refresh?next=${encodeURIComponent(next)}`);
+  if (load.kind === 'consent') redirect(consentPathFor(next));
   const claims = await readSessionClaims();
   return <AdminUsersView query={query} load={load} currentUserId={claims?.sub ?? ''} />;
 }

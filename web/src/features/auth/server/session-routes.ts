@@ -1,8 +1,19 @@
-import { ApiErrorCode, OtpRequestBodySchema, type TokenPairResponse } from '@panter/contracts';
+import {
+  AccessTokenClaimsSchema,
+  ApiErrorCode,
+  OtpRequestBodySchema,
+  type AccessTokenClaims,
+  type TokenPairResponse,
+} from '@panter/contracts';
+import { decodeJwt } from 'jose';
 import { NextResponse, type NextRequest } from 'next/server';
 import { LOGIN_PATH, postLoginPath, safeNextPath } from '@/features/navigation/role-home';
 import { isApiError } from '@/shared/api/errors';
-import { SessionVerifyBodySchema, type SessionNavigation } from '../session-contract';
+import {
+  SessionConsentBodySchema,
+  SessionVerifyBodySchema,
+  type SessionNavigation,
+} from '../session-contract';
 import { STAFF_ONLY_MESSAGE } from '../lib/messages';
 import {
   crossSiteResponse,
@@ -12,8 +23,10 @@ import {
   NO_STORE,
   readJson,
 } from './bff-http';
+import { applyConsentMark, consentPathFor, consentRequired } from './consent-gate';
 import { clearSessionCookies, REFRESH_COOKIE, setSessionCookies } from './cookies';
-import { isSessionRejected } from './session-call';
+import { isSessionRejected, type RefreshFn } from './session-call';
+import { respondWithSession } from './session-handler';
 import type { SessionApi } from './session-api';
 
 /**
@@ -61,9 +74,15 @@ export async function handleOtpVerify(
     return errorJson(403, ApiErrorCode.FORBIDDEN, STAFF_ONLY_MESSAGE);
   }
 
-  const navigation: SessionNavigation = { redirectTo };
+  // Primer ingreso o aviso nuevo (HU-109): antes del panel, el aviso de privacidad. Si la API
+  // todavía no envía `consent`, no se bloquea.
+  const consent = tokens.user.consent;
+  const navigation: SessionNavigation = {
+    redirectTo: consentRequired(consent) ? consentPathFor(redirectTo) : redirectTo,
+  };
   const response = NextResponse.json(navigation, { status: 200, headers: NO_STORE });
   setSessionCookies(response, tokens);
+  applyConsentMark(response, tokens.user.id, consent);
   return response;
 }
 
@@ -124,4 +143,58 @@ export async function handleRefreshRedirect(
       { status: 503, headers: { ...NO_STORE, 'content-type': 'text/plain; charset=utf-8' } },
     );
   }
+}
+
+export interface ConsentRouteDeps {
+  api: Pick<SessionApi, 'acceptConsent'>;
+  refresh: RefreshFn;
+}
+
+/** Claims del token con el que se llamó a la API, solo para navegar y marcar la cookie. */
+function claimsOf(accessToken: string): AccessTokenClaims | null {
+  try {
+    const parsed = AccessTokenClaimsSchema.safeParse(decodeJwt(accessToken));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST /api/session/consent { version, accepted: true, next? } → POST /me/consent con Bearer.
+ * Si la API lo registra, deja la marca de consentimiento y devuelve el panel de destino. Si la
+ * versión ya no es la vigente, la API responde 409 CONSENT_VERSION_OUTDATED y la página recarga
+ * el aviso.
+ */
+export async function handleConsent(
+  request: NextRequest,
+  deps: ConsentRouteDeps,
+): Promise<NextResponse> {
+  const body = await readJson(request, SessionConsentBodySchema);
+  if (!body.ok) return body.response;
+  const { next, ...accept } = body.data;
+
+  return respondWithSession(
+    request,
+    deps.refresh,
+    async (accessToken) => ({
+      status: await deps.api.acceptConsent(accessToken, accept),
+      claims: claimsOf(accessToken),
+    }),
+    ({ status, claims }) => {
+      if (status.required) {
+        return errorJson(
+          409,
+          ApiErrorCode.CONSENT_VERSION_OUTDATED,
+          'El aviso de privacidad cambió. Revísalo de nuevo.',
+        );
+      }
+      const navigation: SessionNavigation = {
+        redirectTo: (claims && postLoginPath(claims.roles, next)) || LOGIN_PATH,
+      };
+      const response = NextResponse.json(navigation, { status: 200, headers: NO_STORE });
+      if (claims) applyConsentMark(response, claims.sub, status);
+      return response;
+    },
+  );
 }

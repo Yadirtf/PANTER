@@ -1,7 +1,13 @@
 import {
   AuthRoutes,
+  ConsentRoutes,
+  ConsentStatusSchema,
+  MeResponseSchema,
   OtpRequestResponseSchema,
   TokenPairResponseSchema,
+  type AcceptConsentBody,
+  type ConsentStatus,
+  type MeResponse,
   type OtpRequestBody,
   type OtpRequestResponse,
   type OtpVerifyBody,
@@ -23,10 +29,20 @@ export interface SessionApi {
   verifyOtp(body: OtpVerifyBody): Promise<TokenPairResponse>;
   refresh(refreshToken: string): Promise<TokenPairResponse>;
   logout(refreshToken: string): Promise<void>;
+  /** GET /me con el access token como Bearer (estado del consentimiento, HU-109). */
+  me(accessToken: string): Promise<MeResponse>;
+  /** POST /me/consent con el access token como Bearer (HU-109). */
+  acceptConsent(accessToken: string, body: AcceptConsentBody): Promise<ConsentStatus>;
 }
 
 export function createSessionApi(config: SessionApiConfig): SessionApi {
   const client = createHttpClient({ baseUrl: config.apiUrl, fetch: config.fetch });
+  const authorized = (accessToken: string) =>
+    createHttpClient({
+      baseUrl: config.apiUrl,
+      fetch: config.fetch,
+      getAccessToken: () => accessToken,
+    });
   return {
     requestOtp: (body) =>
       client.post(AuthRoutes.OTP_REQUEST, { schema: OtpRequestResponseSchema, body }),
@@ -40,5 +56,8 @@ export function createSessionApi(config: SessionApiConfig): SessionApi {
     logout: async (refreshToken) => {
       await client.post(AuthRoutes.LOGOUT, { schema: z.unknown(), body: { refreshToken } });
     },
+    me: (accessToken) => authorized(accessToken).get(AuthRoutes.ME, { schema: MeResponseSchema }),
+    acceptConsent: (accessToken, body) =>
+      authorized(accessToken).post(ConsentRoutes.ME_CONSENT, { schema: ConsentStatusSchema, body }),
   };
 }

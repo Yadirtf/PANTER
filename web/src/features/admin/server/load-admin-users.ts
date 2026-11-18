@@ -7,6 +7,8 @@ export type AdminUsersLoad =
   | { kind: 'ok'; data: AdminUsersResponse }
   /** Token vencido o ausente: la página redirige a /api/session/refresh. */
   | { kind: 'renew' }
+  /** La API exige aceptar el aviso de privacidad (HU-109): la página lleva a /consentimiento. */
+  | { kind: 'consent' }
   | { kind: 'error'; code: string };
 
 /**
@@ -29,6 +31,7 @@ export async function loadAdminUsers(
     if (code === ApiErrorCode.TOKEN_EXPIRED || code === ApiErrorCode.UNAUTHENTICATED) {
       return { kind: 'renew' };
     }
+    if (code === ApiErrorCode.CONSENT_REQUIRED) return { kind: 'consent' };
     return { kind: 'error', code };
   }
 }

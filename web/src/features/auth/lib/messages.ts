@@ -29,6 +29,31 @@ export function loginErrorMessage(code: string): string {
   return LOGIN_ERROR_MESSAGES[code] ?? FALLBACK_MESSAGE;
 }
 
+/** Parámetro con el que /consentimiento se recarga tras CONSENT_VERSION_OUTDATED. */
+export const CONSENT_UPDATED_PARAM = 'actualizado';
+
+/** Aviso tras CONSENT_VERSION_OUTDATED: la página se recarga con la versión nueva del aviso. */
+export const CONSENT_UPDATED_MESSAGE =
+  'El aviso de privacidad se actualizó. Léelo de nuevo y, si estás de acuerdo, toca "Acepto".';
+
+const SESSION_ENDED = 'Tu sesión terminó. Vuelve a iniciar sesión.';
+
+/** Mensajes de /consentimiento para cada código de error. */
+export const CONSENT_ERROR_MESSAGES: Record<string, string> = {
+  [ApiErrorCode.CONSENT_VERSION_OUTDATED]: CONSENT_UPDATED_MESSAGE,
+  [ApiErrorCode.UNAUTHENTICATED]: SESSION_ENDED,
+  [ApiErrorCode.TOKEN_EXPIRED]: SESSION_ENDED,
+  [ApiErrorCode.REFRESH_TOKEN_INVALID]: SESSION_ENDED,
+  [ApiErrorCode.ACCOUNT_SUSPENDED]:
+    'Tu cuenta está suspendida. Comunícate con el administrador de PANTER.',
+  [ClientErrorCode.NETWORK_ERROR]:
+    'No pudimos conectar con PANTER. Revisa tu conexión e intenta de nuevo.',
+};
+
+export function consentErrorMessage(code: string): string {
+  return CONSENT_ERROR_MESSAGES[code] ?? 'No pudimos guardar tu aceptación. Intenta de nuevo.';
+}
+
 /** Errores tras los cuales el código actual ya no sirve y hay que pedir otro. */
 export function requiresNewCode(code: string): boolean {
   return code === ApiErrorCode.OTP_EXPIRED || code === ApiErrorCode.OTP_TOO_MANY_ATTEMPTS;

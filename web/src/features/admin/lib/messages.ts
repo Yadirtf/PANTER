@@ -19,6 +19,8 @@ export const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   [ApiErrorCode.REFRESH_TOKEN_INVALID]: SESSION_ENDED,
   [ApiErrorCode.ACCOUNT_SUSPENDED]:
     'Tu cuenta está suspendida. Comunícate con otro administrador de PANTER.',
+  [ApiErrorCode.CONSENT_REQUIRED]:
+    'Antes de continuar debes aceptar el aviso de privacidad de PANTER.',
   [ApiErrorCode.INTERNAL_ERROR]: 'Tuvimos un problema. Intenta de nuevo en un momento.',
   [ClientErrorCode.NETWORK_ERROR]:
     'No pudimos conectar con PANTER. Revisa tu conexión e intenta de nuevo.',

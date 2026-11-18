@@ -1,8 +1,13 @@
 'use client';
 
-import type { AdminUser, AdminUsersResponse, StaffRole } from '@panter/contracts';
+import {
+  ApiErrorCode,
+  type AdminUser,
+  type AdminUsersResponse,
+  type StaffRole,
+} from '@panter/contracts';
 import { useState } from 'react';
-import { LOGIN_PATH } from '@/features/navigation/role-home';
+import { CONSENT_PATH, LOGIN_PATH } from '@/features/navigation/role-home';
 import { toApiError } from '@/shared/api/errors';
 import { fetchUsersPage, grantRole, revokeRole } from '../api/admin-client';
 import { adminErrorMessage, requiresLogin } from '../lib/messages';
@@ -54,6 +59,10 @@ export function AdminUsersManager({
     const code = toApiError(failure).code;
     if (requiresLogin(code)) {
       window.location.assign(`${LOGIN_PATH}?next=${encodeURIComponent(ADMIN_USERS_PATH)}`);
+      return;
+    }
+    if (code === ApiErrorCode.CONSENT_REQUIRED) {
+      window.location.assign(`${CONSENT_PATH}?next=${encodeURIComponent(ADMIN_USERS_PATH)}`);
       return;
     }
     setError(adminErrorMessage(code));
