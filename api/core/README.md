@@ -134,8 +134,38 @@ pruebas de Workers funcionen sin base de datos; `createDb` falla con un mensaje 
   base64url) y en KV se guarda su SHA-256 con un TTL de 30 días. Cada refresh rota el token;
   reutilizar uno ya rotado revoca toda la familia (sesión). Las llaves se generan con
   `scripts/generar_llaves_jwt.sh`.
-- **Rutas protegidas (HU-104):** `router.use('/ruta/*', requireAuth())` y `getActor(c)` en el
+- **Rutas protegidas:** `router.use('/ruta/*', requireAuth())` y `getActor(c)` en el
   handler. Sin token devuelve 401 `UNAUTHENTICATED`; con el token vencido, 401 `TOKEN_EXPIRED`.
+
+## RBAC y modo activo (HU-104)
+
+| Pieza          | Ubicación                                                                         |
+| -------------- | --------------------------------------------------------------------------------- |
+| Middlewares    | `requireRole(...roles)` y `requireMode(mode)` en `modules/auth/http/authorize.ts` |
+| Casos de uso   | `modules/auth/application/me.ts` (`GetMe`, `SwitchMode`)                          |
+| Rutas          | `GET /me`, `POST /me/mode` (`modules/auth/http/me-routes.ts`)                     |
+| Puertos de M2+ | `ActiveTripChecker`, `DriverAvailability` (`application/ports.ts`)                |
+
+```ts
+router.use('/admin/*', requireAuth(), requireRole('ADMIN')); // 403 FORBIDDEN
+router.use('/driver/*', requireAuth(), requireMode('driver')); // 403 MODE_NOT_ALLOWED
+```
+
+- `requireRole` y `requireMode` deciden con los claims del access token (hasta 15 min de
+  antigüedad). Los casos de uso sensibles vuelven a mirar la base de datos (ADR 0001,
+  seguridad en profundidad): `GET /me` y `POST /me/mode` releen roles y estado de la cuenta.
+- `POST /me/mode` emite un par nuevo en la **misma sesión** (familia de refresh tokens) con el
+  modo pedido guardado en el refresh. El access token lleva el claim `rid` (SHA-256 del
+  refresh token de su par; no sirve para renovar nada), así la API marca como rotado el
+  refresh anterior sin que el cliente lo envíe: si alguien lo usa después, se revoca la
+  sesión igual que en `/auth/refresh`. Con la sesión cerrada (logout) responde 401
+  `REFRESH_TOKEN_INVALID`.
+- `driver` sin el rol DRIVER → 403 `MODE_NOT_ALLOWED`. Con un viaje en curso → 409
+  `MODE_CHANGE_ACTIVE_TRIP` (pedir el modo actual no es un cambio). Al pasar a `passenger` se
+  llama a `DriverAvailability.setUnavailable`.
+- `ActiveTripChecker` responde siempre `false` y `DriverAvailability` es no-op
+  (`infrastructure/pending-adapters.ts`) hasta HU-602 y HU-201; se reemplazan en
+  `composition/auth.ts` (`AuthOverrides.activeTrips` / `driverAvailability`).
 - **Pruebas:** `test/unit/` cubre dominio y casos de uso con dobles en memoria, en Node.
   `test/` cubre rutas y adaptadores en workerd. Ninguna llama a Brevo ni a Resend: usan
   `fetch` simulado. `test-integration/user-repository.test.ts` prueba el repositorio contra

@@ -1,6 +1,7 @@
-import { buildAuthFactories } from './composition/auth';
+import { buildAuthFactories, requireAuth, type IdentityFactories } from './composition/auth';
 import { buildGetHealth } from './composition/health';
-import { authRoutes, type AuthFactories } from './modules/auth/http/routes';
+import { meRoutes } from './modules/auth/http/me-routes';
+import { authRoutes } from './modules/auth/http/routes';
 import { healthRoutes } from './modules/health/http/routes';
 import { createRouter } from './shared/http/create-app';
 import { corsMiddleware } from './shared/http/cors';
@@ -8,7 +9,7 @@ import { errorHandler, notFoundHandler } from './shared/http/errors';
 import { ErrorSchema } from './shared/http/schemas';
 
 export interface AppDeps {
-  auth: AuthFactories;
+  auth: IdentityFactories;
 }
 
 /**
@@ -24,9 +25,10 @@ export function createApp(deps: AppDeps = { auth: buildAuthFactories() }) {
 
   app.route('/', healthRoutes(buildGetHealth));
   app.route('/', authRoutes(deps.auth));
+  app.route('/', meRoutes(deps.auth, requireAuth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
-  // Esquema de seguridad para las rutas protegidas con requireAuth (HU-104 en adelante).
+  // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).
   app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
     type: 'http',
     scheme: 'bearer',

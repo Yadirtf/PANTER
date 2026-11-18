@@ -68,6 +68,12 @@ export interface AccessTokenSigner {
     userId: string;
     roles: Role[];
     activeMode: ActiveMode;
+    /**
+     * SHA-256 del refresh token emitido junto con este access token (claim `rid`). Permite que
+     * POST /me/mode rote ese refresh token sin que el cliente lo envíe. Conocerlo no sirve para
+     * renovar la sesión: la API solo acepta el refresh token, nunca su hash.
+     */
+    refreshId?: string;
   }): Promise<IssuedAccessToken>;
 }
 
@@ -106,4 +112,22 @@ export interface RefreshTokenStore {
 export interface RefreshTokenCodec {
   generate(): string;
   hash(token: string): Promise<string>;
+}
+
+// --- Modo activo (HU-104) ---
+
+/**
+ * Puerto: ¿el usuario tiene un viaje en curso (como pasajero o conductor)? Mientras no existan
+ * los viajes (HU-601/HU-602) la implementación responde siempre `false`.
+ */
+export interface ActiveTripChecker {
+  hasActiveTrip(userId: string): Promise<boolean>;
+}
+
+/**
+ * Puerto: disponibilidad del conductor para recibir ofertas. Al pasar a modo pasajero el
+ * conductor queda no disponible (§5.3). No-op hasta que exista driver_profiles (HU-201).
+ */
+export interface DriverAvailability {
+  setUnavailable(userId: string): Promise<void>;
 }

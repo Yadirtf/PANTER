@@ -66,15 +66,19 @@ export interface SignerConfig {
 /**
  * Firma access tokens RS256 de `ACCESS_TOKEN_TTL_SECONDS` (15 min) con los claims de
  * `AccessTokenClaimsSchema`: sub, roles, activeMode, iss "panter-api", aud "panter", iat, exp y
- * jti. El header lleva `kid` para que quien verifique elija la llave del JWKS.
+ * jti, más `rid` (hash del refresh token del par, ver `AccessTokenSigner`). El header lleva `kid` para que quien verifique elija la llave del JWKS.
  */
 export function createJoseAccessTokenSigner(config: SignerConfig): AccessTokenSigner {
   const now = config.now ?? Date.now;
   const newId = config.newId ?? (() => crypto.randomUUID());
   return {
-    async sign({ userId, roles, activeMode }) {
+    async sign({ userId, roles, activeMode, refreshId }) {
       const iat = Math.floor(now() / 1000);
-      const token = await new SignJWT({ roles, activeMode })
+      const token = await new SignJWT({
+        roles,
+        activeMode,
+        ...(refreshId ? { rid: refreshId } : {}),
+      })
         .setProtectedHeader({ alg: JWT_ALG, kid: config.kid, typ: 'JWT' })
         .setSubject(userId)
         .setIssuer(JWT_ISSUER)
@@ -112,6 +116,8 @@ export function createJoseAccessTokenVerifier(config: VerifierConfig): AccessTok
         });
         const claims = AccessTokenClaimsSchema.safeParse(payload);
         if (!claims.success) return { ok: false, reason: 'invalid' };
+        // `rid` no es parte del contrato de los clientes; solo lo usa la API (POST /me/mode).
+        const rid = typeof payload.rid === 'string' && payload.rid ? payload.rid : undefined;
         return {
           ok: true,
           actor: {
@@ -119,6 +125,7 @@ export function createJoseAccessTokenVerifier(config: VerifierConfig): AccessTok
             roles: claims.data.roles,
             activeMode: claims.data.activeMode,
             tokenId: claims.data.jti,
+            ...(rid ? { refreshId: rid } : {}),
           },
         };
       } catch (error) {

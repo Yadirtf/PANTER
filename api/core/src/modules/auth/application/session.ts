@@ -36,9 +36,15 @@ export function makeIssueSession(deps: SessionDeps): IssueSession {
   const newId = deps.newId ?? (() => crypto.randomUUID());
   return async (user, requestedMode, familyId = newId()) => {
     const activeMode = resolveActiveMode(user.roles, requestedMode);
-    const access = await deps.signer.sign({ userId: user.id, roles: user.roles, activeMode });
     const refreshToken = deps.codec.generate();
-    await deps.refreshStore.put(await deps.codec.hash(refreshToken), {
+    const refreshId = await deps.codec.hash(refreshToken);
+    const access = await deps.signer.sign({
+      userId: user.id,
+      roles: user.roles,
+      activeMode,
+      refreshId,
+    });
+    await deps.refreshStore.put(refreshId, {
       userId: user.id,
       activeMode,
       familyId,
