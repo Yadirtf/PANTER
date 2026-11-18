@@ -3,7 +3,10 @@
   // integración contra PostgreSQL. Se tipa aparte para no mezclar @types/node con workers-types.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    // Node ejecuta los scripts .ts directamente (type stripping) y exige la extensión en los
+    // imports locales.
+    "allowImportingTsExtensions": true
   },
   "include": [
     "scripts",
