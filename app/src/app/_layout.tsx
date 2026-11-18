@@ -27,6 +27,9 @@ function RootNavigator() {
         <Stack.Protected guard={group === '(auth)'}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
+        <Stack.Protected guard={group === '(consent)'}>
+          <Stack.Screen name="(consent)" />
+        </Stack.Protected>
         <Stack.Protected guard={group === '(web-only)'}>
           <Stack.Screen name="(web-only)" />
         </Stack.Protected>

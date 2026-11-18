@@ -4,6 +4,7 @@
 import {
   type ActiveMode,
   ApiErrorCode,
+  type ConsentStatus,
   type MeResponse,
   type TokenPairResponse,
 } from '@panter/contracts';
@@ -62,6 +63,8 @@ export class SessionManager implements AuthHandler {
   private refreshing: Promise<string> | null = null;
   /** Cambia en cada login o cierre de sesión; descarta refrescos de una sesión anterior. */
   private epoch = 0;
+  /** Cambia con cada aceptación del aviso; descarta un GET /me que salió antes de ella. */
+  private consentSeq = 0;
 
   constructor(options: SessionManagerOptions) {
     this.api = options.api;
@@ -152,6 +155,7 @@ export class SessionManager implements AuthHandler {
    */
   async refreshProfile(): Promise<void> {
     const epoch = this.epoch;
+    const consentSeq = this.consentSeq;
     let user: MeResponse;
     try {
       user = await this.api.getMe();
@@ -166,6 +170,8 @@ export class SessionManager implements AuthHandler {
       return;
     }
     if (epoch !== this.epoch || !this.session) return;
+    // Se aceptó el aviso mientras GET /me estaba en curso: su consent ya no está al día.
+    if (consentSeq !== this.consentSeq) user = { ...user, consent: this.session.user.consent };
     if (user.status !== 'ACTIVE') {
       await this.expire(ApiErrorCode.ACCOUNT_SUSPENDED);
       return;
@@ -189,10 +195,27 @@ export class SessionManager implements AuthHandler {
     await this.applyTokenPair(pair);
   }
 
-  /** Cierre pedido por el usuario: revoca el refresh token en la API y borra el almacenamiento. */
-  async signOut(): Promise<void> {
+  /**
+   * Estado del consentimiento devuelto por POST /me/consent (HU-109): lo guarda en el perfil para
+   * que la navegación salga del aviso de privacidad. Sin sesión (se cerró mientras tanto) no hace
+   * nada.
+   */
+  async applyConsent(consent: ConsentStatus): Promise<void> {
+    if (!this.session) return;
+    this.consentSeq += 1;
+    const session: StoredSession = { ...this.session, user: { ...this.session.user, consent } };
+    this.setSession(session);
+    // Si falla el guardado, el GET /me de la próxima apertura trae el estado correcto.
+    await this.storage.save(session).catch(() => undefined);
+  }
+
+  /**
+   * Cierre pedido por el usuario: revoca el refresh token en la API y borra el almacenamiento.
+   * `reason` (p. ej. CONSENT_DECLINED) se muestra luego en el login.
+   */
+  async signOut(reason: string | null = null): Promise<void> {
     const session = this.session;
-    await this.expire(null);
+    await this.expire(reason);
     if (!session) return;
     try {
       const accessValid = session.accessTokenExpiresAt > this.now();

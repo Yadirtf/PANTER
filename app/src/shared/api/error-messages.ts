@@ -10,6 +10,10 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   // Cliente
   NETWORK_ERROR: 'No hay conexión a internet. Revisa tus datos o el wifi e intenta de nuevo.',
   INVALID_RESPONSE: 'Recibimos una respuesta inesperada del servidor. Intenta de nuevo más tarde.',
+  CONSENT_DECLINED:
+    'Sin tu autorización para el tratamiento de tus datos personales no es posible usar PANTER. Si cambias de opinión, ingresa de nuevo y acepta el aviso de privacidad.',
+  CONSENT_APP_OUTDATED:
+    'El aviso de privacidad cambió y esta versión de la app no lo tiene. Descarga la última versión de PANTER para leerlo y aceptarlo.',
   // Genéricos
   NOT_FOUND: 'No encontramos lo que buscas.',
   VALIDATION_ERROR: 'Revisa los datos: hay un campo vacío o con un formato incorrecto.',

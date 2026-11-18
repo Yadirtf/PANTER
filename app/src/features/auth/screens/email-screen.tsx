@@ -2,9 +2,10 @@
 import { EmailSchema } from '@panter/contracts';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { StyleSheet, Text } from 'react-native';
 import { errorMessage } from '../../../shared/api/error-messages';
 import { toApiError } from '../../../shared/api/errors';
-import { Button, ErrorMessage, Field } from '../../../shared/ui/form';
+import { Button, colors, ErrorMessage, Field } from '../../../shared/ui/form';
 import { authApi } from '../session/instance';
 import { useSession } from '../session/session-context';
 import { resendWaitSeconds, toRouteParams } from '../otp/code-params';
@@ -65,6 +66,18 @@ export function EmailScreen() {
         editable={!loading}
       />
       <Button title="Enviar código" onPress={submit} loading={loading} />
+      <Text style={styles.legal}>
+        Al ingresar te pediremos autorizar el tratamiento de tus datos personales (Ley 1581 de
+        2012).
+      </Text>
+      <Text accessibilityRole="link" style={styles.link} onPress={() => router.push('/privacy')}>
+        Aviso de privacidad
+      </Text>
     </AuthLayout>
   );
 }
+
+const styles = StyleSheet.create({
+  legal: { fontSize: 14, color: colors.muted, textAlign: 'center' },
+  link: { color: colors.primary, fontSize: 16, textAlign: 'center', padding: 8 },
+});
