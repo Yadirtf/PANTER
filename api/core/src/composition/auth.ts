@@ -6,6 +6,7 @@ import type {
   Clock,
   ConsentStatusReader,
   DriverAvailability,
+  DriverModeEligibility,
   OtpDelivery,
   UserRepository,
 } from '../modules/auth/application/ports';
@@ -29,10 +30,7 @@ import {
   createJoseAccessTokenVerifier,
 } from '../modules/auth/infrastructure/jose-access-tokens';
 import { createKvOtpStore } from '../modules/auth/infrastructure/kv-otp-store';
-import {
-  noActiveTrips,
-  noopDriverAvailability,
-} from '../modules/auth/infrastructure/pending-adapters';
+import { noActiveTrips } from '../modules/auth/infrastructure/pending-adapters';
 import {
   createKvRefreshTokenStore,
   createRefreshTokenCodec,
@@ -41,6 +39,7 @@ import { makeGetConsentStatus } from '../modules/consent/application/consent';
 import { requireConfig } from './config';
 import { defaultConsentRepository } from './consent';
 import { buildDb } from './db';
+import { defaultDriverAvailability, defaultDriverEligibility } from './drivers';
 import { buildSendOtpEmail } from './email';
 
 /** Largo mínimo de OTP_SECRET (`openssl rand -hex 32` da 64 caracteres; se exige al menos 32). */
@@ -77,8 +76,10 @@ export interface AuthOverrides {
   deliver?: (env: Env) => OtpDelivery;
   /** Por defecto `noActiveTrips` hasta HU-602. */
   activeTrips?: (env: Env) => ActiveTripChecker;
-  /** Por defecto `noopDriverAvailability` hasta HU-201. */
+  /** HU-201: por defecto driver_profiles.availability = OFFLINE (módulo drivers). */
   driverAvailability?: (env: Env) => DriverAvailability;
+  /** HU-201: por defecto verification_status APPROVED en driver_profiles (módulo drivers). */
+  driverEligibility?: (env: Env) => DriverModeEligibility;
   /** Estado del consentimiento (HU-109). Por defecto, el módulo consent sobre Postgres. */
   consent?: (env: Env) => ConsentStatusReader;
   clock?: Clock;
@@ -93,7 +94,8 @@ export function buildAuthFactories(overrides: AuthOverrides = {}): IdentityFacto
   const users = overrides.users ?? ((env: Env) => createDrizzleUserRepository(buildDb(env)));
   const deliver = overrides.deliver ?? ((env: Env) => buildSendOtpEmail(env));
   const activeTrips = overrides.activeTrips ?? (() => noActiveTrips);
-  const driverAvailability = overrides.driverAvailability ?? (() => noopDriverAvailability);
+  const driverAvailability = overrides.driverAvailability ?? defaultDriverAvailability;
+  const driverEligibility = overrides.driverEligibility ?? defaultDriverEligibility;
   const consent =
     overrides.consent ??
     ((env: Env) => makeGetConsentStatus({ repo: defaultConsentRepository(env) }));
@@ -147,6 +149,7 @@ export function buildAuthFactories(overrides: AuthOverrides = {}): IdentityFacto
         users: users(env),
         issueSession: issueSession(env),
         clock,
+        driverEligibility: driverEligibility(env),
         onReuseDetected: (info) => console.warn({ event: 'refresh_token_reuse', ...info }),
       }),
     logout: (env) => makeLogout({ refreshStore: refreshStore(env), codec, clock }),
@@ -157,6 +160,7 @@ export function buildAuthFactories(overrides: AuthOverrides = {}): IdentityFacto
         users: users(env),
         activeTrips: activeTrips(env),
         driverAvailability: driverAvailability(env),
+        driverEligibility: driverEligibility(env),
         refreshStore: refreshStore(env),
         issueSession: issueSession(env),
         clock,
