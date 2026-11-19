@@ -134,8 +134,16 @@ export interface ActiveTripChecker {
 
 /**
  * Puerto: disponibilidad del conductor para recibir ofertas. Al pasar a modo pasajero el
- * conductor queda no disponible (§5.3). No-op hasta que exista driver_profiles (HU-201).
+ * conductor queda no disponible (§5.3): `availability = OFFLINE` en driver_profiles (HU-201).
  */
 export interface DriverAvailability {
   setUnavailable(userId: string): Promise<void>;
+}
+
+/**
+ * Puerto (HU-201): ¿puede operar en modo conductor? Además del rol DRIVER exige que su
+ * verificación esté APPROVED; un conductor SUSPENDED conserva el rol pero no el modo.
+ */
+export interface DriverModeEligibility {
+  canUseDriverMode(userId: string): Promise<boolean>;
 }
