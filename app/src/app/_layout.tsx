@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SessionProvider, useSession } from '../features/auth/session/session-context';
+import { DriverUploadsRunner } from '../features/driver-onboarding/use-driver-onboarding';
 import { resolveRootGroup } from '../navigation/root-group';
 import { colors } from '../shared/ui/form';
 
@@ -12,6 +13,8 @@ export default function RootLayout() {
   return (
     <SessionProvider>
       <StatusBar style="auto" />
+      {/* Subidas de documentos de conductor pendientes (HU-203): siguen fuera de la pantalla. */}
+      <DriverUploadsRunner />
       <RootNavigator />
     </SessionProvider>
   );

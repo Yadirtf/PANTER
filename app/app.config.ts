@@ -15,6 +15,10 @@ import { resolveVersion } from './src/config/version.ts';
 
 const BASE_APPLICATION_ID = 'co.panter.app';
 
+/** Texto del permiso de cámara (iOS lo muestra en el diálogo; Android usa el aviso de la app). */
+export const CAMERA_PERMISSION_TEXT =
+  'PANTER usa la cámara para fotografiar tus documentos de conductor (cédula, licencia, tarjeta de propiedad, SOAT y revisión técnico-mecánica) y enviarlos a revisión.';
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const { appEnv, apiUrl } = resolveEnvironment({
     APP_ENV: process.env.APP_ENV,
@@ -52,6 +56,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Sesión en el Keystore (HU-105); excluye los datos cifrados de los backups de Android,
       // que no se podrían descifrar al restaurarlos en otro teléfono.
       'expo-secure-store',
+      // Fotos de los documentos de conductor (HU-203). Solo cámara: sin micrófono ni lector de
+      // códigos de barras (reduce permisos y tamaño de la APK).
+      [
+        'expo-camera',
+        {
+          cameraPermission: CAMERA_PERMISSION_TEXT,
+          microphonePermission: false,
+          recordAudioAndroid: false,
+          barcodeScannerEnabled: false,
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,

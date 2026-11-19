@@ -1,6 +1,10 @@
 import { buildAdminFactories } from './composition/admin';
 import { buildAuthFactories, requireAuth, type IdentityFactories } from './composition/auth';
 import { buildConsentFactories } from './composition/consent';
+// HU-201/202/204: conductores
+import { buildDriverFactories } from './composition/drivers';
+import { driverRoutes, type DriverFactories } from './modules/drivers/http/routes';
+import { makeRequireConsent } from './modules/consent/http/require-consent';
 import { buildGetHealth } from './composition/health';
 // M2 · HU-305 (rutas)
 import { buildRoutingFactories } from './composition/routing';
@@ -25,6 +29,8 @@ export interface AppDeps {
   auth: IdentityFactories;
   admin: AdminFactories;
   consent: ConsentFactories;
+  /** HU-201/202/204: conductores. */
+  drivers: DriverFactories;
   /** M2 · HU-305 */
   routing: RoutingFactories;
   /** M2 · HU-401 */
@@ -40,6 +46,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     auth: overrides.auth ?? buildAuthFactories(),
     admin: overrides.admin ?? buildAdminFactories(),
     consent: overrides.consent ?? buildConsentFactories(),
+    drivers: overrides.drivers ?? buildDriverFactories(),
     routing: overrides.routing ?? buildRoutingFactories(),
     pricingAdmin: overrides.pricingAdmin ?? buildPricingAdminFactories(),
   };
@@ -54,6 +61,9 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   app.route('/', meRoutes(deps.auth, requireAuth));
   app.route('/', adminRoutes(deps.admin, requireAuth));
   app.route('/', consentRoutes(deps.consent, requireAuth));
+  // HU-201/202/204: conductores (solicitud, documentos y revisión por ADMIN).
+  const requireConsent = makeRequireConsent(deps.consent.consentStatus);
+  app.route('/', driverRoutes(deps.drivers, { requireAuth, requireConsent }));
   // M2 · HU-305: GET /routes
   app.route('/', routingRoutes(deps.routing, requireAuth));
   // M2 · HU-401: /admin/fares
