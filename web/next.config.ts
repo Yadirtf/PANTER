@@ -2,8 +2,8 @@ import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // @panter/contracts se publica como TypeScript sin compilar dentro del monorepo.
-  transpilePackages: ['@panter/contracts'],
+  // @panter/contracts y @panter/map-style se publican como TypeScript sin compilar (monorepo).
+  transpilePackages: ['@panter/contracts', '@panter/map-style'],
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {

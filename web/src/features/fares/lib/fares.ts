@@ -1,15 +1,17 @@
 import {
   FareRuleUpdateBodySchema,
   GeofenceKind,
-  GeofenceSchema,
+  GeofenceUpdateBodySchema as ContractGeofenceUpdateBodySchema,
   PricingModel,
   VehicleType,
   type FareRule,
   type FareRuleUpdateBody,
   type Geofence,
+  type PolygonRings,
 } from '@panter/contracts';
 import { z } from 'zod';
 import { formatThousands } from '@/shared/lib/format';
+import { describePolygon, samePolygon, toPolygonPayload, type EditableRings } from './polygon-edit';
 
 /** Edición de tarifas por ADMIN (HU-403): formularios, conversiones y validación. */
 
@@ -227,14 +229,12 @@ export function showsMeteredFields(model: PricingModel): boolean {
 // --- Geocercas ---
 
 /**
- * Cuerpo de PUT /admin/fares/geofences/:id. El contrato de M2 no lo define todavía: son los
- * campos editables de GeofenceSchema (el polígono no se edita en HU-403; llega con HU-304).
+ * Cuerpo de PUT /admin/fares/geofences/:id: el esquema del contrato (polígono opcional: si no
+ * viene, la API conserva el actual) con el nombre recortado.
  */
-export const GeofenceUpdateBodySchema = GeofenceSchema.pick({
-  surcharge: true,
-  appliesTo: true,
-  active: true,
-}).extend({ name: z.string().trim().min(1).max(80) });
+export const GeofenceUpdateBodySchema = ContractGeofenceUpdateBodySchema.extend({
+  name: z.string().trim().min(1).max(80),
+});
 export type GeofenceUpdateBody = z.infer<typeof GeofenceUpdateBodySchema>;
 
 export interface GeofenceForm {
@@ -290,13 +290,23 @@ export function formToGeofenceBody(
   return { ok: false, errors };
 }
 
-/** Vértices del anillo exterior y de los huecos, para mostrarlos en solo lectura. */
-export function polygonSummary(geofence: Geofence): string {
-  const [outer, ...holes] = geofence.polygon;
-  const base = `${outer?.length ?? 0} vértices`;
-  return holes.length === 0
-    ? base
-    : `${base} y ${holes.length} ${holes.length === 1 ? 'hueco' : 'huecos'}`;
+/**
+ * Cuerpo final del PUT: los campos del formulario y, solo si cambió, el polígono editado
+ * (anillos cerrados). Sin cambios en el mapa no se envía `polygon` y la API conserva el actual.
+ */
+export function geofenceSaveBody(
+  fields: GeofenceUpdateBody,
+  savedPolygon: PolygonRings,
+  editedRings: EditableRings | null,
+): GeofenceUpdateBody {
+  const { polygon: _ignored, ...rest } = fields;
+  if (!editedRings || samePolygon(savedPolygon, editedRings)) return rest;
+  return { ...rest, polygon: toPolygonPayload(editedRings) };
+}
+
+/** Vértices del anillo exterior y de los huecos. */
+export function polygonSummary(geofence: { polygon: PolygonRings }): string {
+  return describePolygon(geofence.polygon);
 }
 
 /** "1,02950; −76,61650" (lat; lng con 5 decimales y coma decimal). */

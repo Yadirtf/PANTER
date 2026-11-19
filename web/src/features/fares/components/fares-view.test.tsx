@@ -10,7 +10,7 @@ import { CONFIG, GEOFENCE_CHANGE, RULE_CHANGE } from '../server/fares-test-data'
 import { faresRedirect, loadFaresPage } from '../server/load-fares';
 import { PREVIEW_DISCLAIMER } from './fare-preview';
 import { FaresView } from './fares-view';
-import { POLYGON_READ_ONLY_NOTE } from './geofences-editor';
+import { MAP_HELP } from './geofences-editor';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
@@ -77,15 +77,21 @@ describe('/admin/tarifas (render del servidor)', () => {
     expect(html).toContain('$ 3.000');
   });
 
-  it('geocercas en lista con su polígono en solo lectura', async () => {
+  it('geocercas en lista y sobre el mapa (cargado solo en el cliente)', async () => {
     const { html } = await render(OK_ROUTES);
     expect(html).toContain('Zona periférica de Villagarzón');
     expect(html).toContain('Zona periférica</dd>');
     expect(html).toContain('$ 5.000');
     expect(html).toContain('<dd>Mototaxi, Taxi</dd>');
-    expect(html).toContain(escape(POLYGON_READ_ONLY_NOTE));
-    expect(html).toContain('Polígono: <!-- -->5 vértices y 1 hueco<!-- --> (solo lectura)');
-    expect(html).toContain('0,97200; −76,61200');
+    expect(html).toContain(escape(MAP_HELP));
+    expect(html).toContain('Polígono: <!-- -->4 vértices y 1 hueco de 4 vértices');
+    expect(html).toContain('Polígono: <!-- -->4 vértices</p>');
+    // El mapa se arma en el navegador: en el HTML del servidor solo va su contenedor accesible.
+    expect(html).toContain('data-panter-map="Mapa de geocercas de Villagarzón"');
+    expect(html).toContain('Cargando el mapa…');
+    expect(html).not.toContain('maplibregl-canvas');
+    expect(html).toContain('Probar un punto');
+    expect(html).toContain('Aeropuerto</li>');
   });
 
   it('historial con autor, fecha en hora de Colombia y diff legible', async () => {

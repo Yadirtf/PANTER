@@ -1,9 +1,17 @@
 'use client';
 
-import type { Geofence, VehicleType } from '@panter/contracts';
+import {
+  isInServiceArea,
+  type Geofence,
+  type LatLng,
+  type PolygonRings,
+  type VehicleType,
+} from '@panter/contracts';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { handleAdminFailure } from '@/features/admin/lib/admin-failure';
+import { PanterMap } from '@/features/map/components/panter-map';
+import { toApiError } from '@/shared/api/errors';
 import { formatCop, VEHICLE_LABEL } from '@/shared/lib/format';
 import { saveGeofence } from '../api/fares-client';
 import {
@@ -12,6 +20,7 @@ import {
   formToGeofenceBody,
   GEOFENCE_KIND_LABEL,
   geofenceBody,
+  geofenceSaveBody,
   geofenceToForm,
   polygonSummary,
   VEHICLE_ORDER,
@@ -20,15 +29,76 @@ import {
   type GeofenceFormField,
   type GeofenceUpdateBody,
 } from '../lib/fares';
+import { GEOFENCE_KIND_COLOR, geofencesAt, shownGeofence } from '../lib/geofence-map';
 import { diffSnapshots, type FieldChange } from '../lib/history';
-import { fareErrorMessage } from '../lib/messages';
+import { fareErrorMessage, polygonRejectionMessage } from '../lib/messages';
+import {
+  canDeleteVertex,
+  deleteVertex,
+  describePolygonChange,
+  insertMidpoint,
+  MIN_VERTICES_MESSAGE,
+  moveVertex,
+  samePolygon,
+  toEditable,
+  type EditableRings,
+  type VertexRef,
+} from '../lib/polygon-edit';
+import { polygonIssues, ringName } from '../lib/polygon-validation';
 import { DiffList, inputClass, MoneyField } from './form-fields';
+import { GeofenceLayers, type GeofenceEditing } from './geofence-layers';
 
-export const POLYGON_READ_ONLY_NOTE =
-  'El polígono no se edita en esta pantalla: el editor sobre el mapa llega con HU-304 (mapa en la web). Por ahora sus vértices se muestran en solo lectura.';
+export const MAP_HELP =
+  'Haz clic en «Editar» en una geocerca para cambiar su polígono sobre el mapa. Con «Probar un punto» compruebas qué recargos cobra un lugar.';
+export const EDIT_HELP =
+  'Arrastra un vértice para moverlo. Haz clic en un punto pequeño (la mitad de un lado) para agregar un vértice. Para borrar uno, selecciónalo y pulsa «Borrar vértice» (o haz clic derecho sobre él). Cada borde necesita al menos 3 vértices.';
+export const TEST_POINT_HELP =
+  'Haz clic en el mapa para ver qué geocercas cubren ese punto y qué recargo se cobraría.';
 
-/** Geocercas con recargo: nombre, recargo, a qué vehículos aplica y si está activa (HU-403). */
+/** Geocercas con recargo (HU-403) con su polígono editable sobre el mapa (HU-304). */
 export function GeofencesEditor({ geofences }: { geofences: readonly Geofence[] }) {
+  const [savedPolygons, setSavedPolygons] = useState<Record<string, PolygonRings>>(() =>
+    Object.fromEntries(geofences.map((g) => [g.id, g.polygon])),
+  );
+  const [editing, setEditing] = useState<GeofenceEditing | null>(null);
+  const [mapMessage, setMapMessage] = useState<string | null>(null);
+  const [testMode, setTestMode] = useState(false);
+  const [testPoint, setTestPoint] = useState<LatLng | null>(null);
+
+  const polygonOf = (g: Geofence) => savedPolygons[g.id] ?? g.polygon;
+  const shown = geofences.map((g) => shownGeofence(g, polygonOf(g)));
+  const shownNow = shown.map((g) =>
+    editing?.id === g.id ? { ...g, polygon: editing.rings as PolygonRings } : g,
+  );
+  const editingGeofence = editing ? geofences.find((g) => g.id === editing.id) : undefined;
+
+  function updateRings(
+    update: (rings: EditableRings) => EditableRings,
+    selected?: VertexRef | null,
+  ) {
+    setEditing((current) =>
+      current
+        ? {
+            ...current,
+            rings: update(current.rings),
+            selected: selected === undefined ? current.selected : selected,
+          }
+        : current,
+    );
+    setMapMessage(null);
+  }
+
+  function removeVertex(ref: VertexRef) {
+    if (!editing) return;
+    const result = deleteVertex(editing.rings, ref);
+    if (!result.ok) {
+      setMapMessage(result.message);
+      return;
+    }
+    setEditing({ ...editing, rings: result.rings, selected: null });
+    setMapMessage(null);
+  }
+
   return (
     <section aria-labelledby="geocercas" className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
@@ -37,15 +107,120 @@ export function GeofencesEditor({ geofences }: { geofences: readonly Geofence[] 
         </h2>
         <p className="text-sm text-stone-600">
           El recargo se cobra una vez por viaje si el origen o el destino caen dentro de la zona.{' '}
-          {POLYGON_READ_ONLY_NOTE}
+          {MAP_HELP}
         </p>
       </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ul aria-label="Leyenda del mapa" className="flex flex-wrap gap-4 text-sm text-stone-700">
+            {Object.entries(GEOFENCE_KIND_LABEL).map(([kind, label]) => (
+              <li key={kind} className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-3 w-5 rounded-sm border-2"
+                  style={{
+                    borderColor: GEOFENCE_KIND_COLOR[kind as keyof typeof GEOFENCE_KIND_COLOR],
+                    backgroundColor: `${GEOFENCE_KIND_COLOR[kind as keyof typeof GEOFENCE_KIND_COLOR]}33`,
+                  }}
+                />
+                {label}
+              </li>
+            ))}
+            <li className="text-stone-500">
+              Los huecos (p. ej. el casco urbano) no cobran recargo.
+            </li>
+          </ul>
+          <button
+            type="button"
+            aria-pressed={testMode}
+            onClick={() => {
+              setTestMode(!testMode);
+              setTestPoint(null);
+            }}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+              testMode
+                ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
+                : 'border-stone-300 text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            {testMode ? 'Terminar prueba' : 'Probar un punto'}
+          </button>
+        </div>
+
+        <PanterMap ariaLabel="Mapa de geocercas de Villagarzón" className="h-[28rem]">
+          <GeofenceLayers
+            geofences={shown}
+            editing={editing}
+            testMode={testMode}
+            testPoint={testPoint}
+            onTestPoint={setTestPoint}
+            onVertexSelect={(ref) => editing && setEditing({ ...editing, selected: ref })}
+            onVertexMove={(ref, to) => updateRings((rings) => moveVertex(rings, ref, to), ref)}
+            onVertexDelete={removeVertex}
+            onMidpointClick={(ring, side) => {
+              if (!editing) return;
+              const result = insertMidpoint(editing.rings, ring, side);
+              setEditing({ ...editing, rings: result.rings, selected: result.inserted });
+              setMapMessage(null);
+            }}
+          />
+        </PanterMap>
+
+        {testMode ? (
+          <TestPointResult point={testPoint} geofences={geofences} shown={shownNow} />
+        ) : null}
+
+        {editing && editingGeofence ? (
+          <PolygonPanel
+            geofence={editingGeofence}
+            saved={polygonOf(editingGeofence)}
+            editing={editing}
+            message={mapMessage}
+            onSelect={(selected) => setEditing({ ...editing, selected })}
+            onDelete={removeVertex}
+            onInsertAfter={(ref) => {
+              const result = insertMidpoint(editing.rings, ref.ring, ref.vertex);
+              setEditing({ ...editing, rings: result.rings, selected: result.inserted });
+            }}
+            onReset={() => {
+              setEditing({
+                ...editing,
+                rings: toEditable(polygonOf(editingGeofence)),
+                selected: null,
+              });
+              setMapMessage(null);
+            }}
+          />
+        ) : null}
+      </div>
+
       {geofences.length === 0 ? (
         <p className="text-stone-600">No hay geocercas configuradas.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {geofences.map((geofence) => (
-            <GeofenceRow key={geofence.id} geofence={geofence} />
+            <GeofenceRow
+              key={geofence.id}
+              geofence={geofence}
+              savedPolygon={polygonOf(geofence)}
+              editedRings={editing?.id === geofence.id ? editing.rings : null}
+              locked={editing !== null && editing.id !== geofence.id}
+              onStartEdit={() => {
+                setEditing({
+                  id: geofence.id,
+                  rings: toEditable(polygonOf(geofence)),
+                  selected: null,
+                });
+                setMapMessage(null);
+                setTestMode(false);
+              }}
+              onStopEdit={() => setEditing(null)}
+              onSaved={(polygon) => {
+                setSavedPolygons((current) => ({ ...current, [geofence.id]: polygon }));
+                setEditing(null);
+              }}
+            />
           ))}
         </ul>
       )}
@@ -53,7 +228,179 @@ export function GeofencesEditor({ geofences }: { geofences: readonly Geofence[] 
   );
 }
 
-function GeofenceRow({ geofence }: { geofence: Geofence }) {
+/** Resultado de "Probar un punto": geocercas que cubren el punto y su recargo. */
+export function TestPointResult({
+  point,
+  geofences,
+  shown,
+}: {
+  point: LatLng | null;
+  geofences: readonly Geofence[];
+  shown: ReturnType<typeof shownGeofence>[];
+}) {
+  let content: ReactNode;
+  if (!point) {
+    content = <p>{TEST_POINT_HELP}</p>;
+  } else {
+    const hits = geofencesAt(point, shown).map((hit) => geofences.find((g) => g.id === hit.id)!);
+    content = (
+      <>
+        <p className="font-medium text-stone-900">Punto {formatLatLng(point)}</p>
+        {!isInServiceArea(point) ? (
+          <p>Este punto está fuera del área de servicio de PANTER.</p>
+        ) : hits.length === 0 ? (
+          <p>Ninguna geocerca cubre este punto: no se cobra recargo por zona.</p>
+        ) : (
+          <ul className="list-disc pl-5">
+            {hits.map((g) => (
+              <li key={g.id}>
+                {g.name} ({GEOFENCE_KIND_LABEL[g.kind]}): recargo de {formatCop(g.surcharge)} para{' '}
+                {VEHICLE_ORDER.filter((t) => g.appliesTo.includes(t))
+                  .map((t) => VEHICLE_LABEL[t])
+                  .join(', ')}
+                {g.active ? '' : ' — inactiva, hoy no se cobra'}
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    );
+  }
+  return (
+    <div
+      aria-live="polite"
+      className="flex flex-col gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-stone-700"
+    >
+      {content}
+    </div>
+  );
+}
+
+function PolygonPanel({
+  geofence,
+  saved,
+  editing,
+  message,
+  onSelect,
+  onDelete,
+  onInsertAfter,
+  onReset,
+}: {
+  geofence: Geofence;
+  saved: PolygonRings;
+  editing: GeofenceEditing;
+  message: string | null;
+  onSelect: (ref: VertexRef) => void;
+  onDelete: (ref: VertexRef) => void;
+  onInsertAfter: (ref: VertexRef) => void;
+  onReset: () => void;
+}) {
+  const issues = polygonIssues(editing.rings);
+  const changed = !samePolygon(saved, editing.rings);
+  const selected = editing.selected;
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-stone-700">
+      <p className="font-medium text-stone-900">Editando el polígono de {geofence.name}</p>
+      <p>{EDIT_HELP}</p>
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          disabled={!selected || !canDeleteVertex(editing.rings, selected.ring)}
+          onClick={() => selected && onDelete(selected)}
+          title={
+            selected && !canDeleteVertex(editing.rings, selected.ring)
+              ? MIN_VERTICES_MESSAGE
+              : undefined
+          }
+          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-medium hover:bg-stone-100 disabled:opacity-60"
+        >
+          Borrar vértice
+        </button>
+        <button
+          type="button"
+          disabled={!changed}
+          onClick={onReset}
+          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-medium hover:bg-stone-100 disabled:opacity-60"
+        >
+          Deshacer cambios del polígono
+        </button>
+      </div>
+      <div aria-live="polite">
+        {message ? <p className="text-red-700">{message}</p> : null}
+        {issues.length > 0 ? (
+          <ul className="list-disc pl-5 text-red-700">
+            {issues.map((issue, i) => (
+              <li key={i}>{issue.message}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      <details>
+        <summary className="cursor-pointer">
+          Vértices ({polygonSummary({ polygon: editing.rings })})
+        </summary>
+        <ol className="mt-2 flex flex-col gap-2">
+          {editing.rings.map((ring, r) => (
+            <li key={r}>
+              <p className="font-medium">{ringName(r)}</p>
+              <ol className="ml-4 flex list-decimal flex-col gap-1 font-mono text-xs">
+                {ring.map((point, v) => {
+                  const isSelected = selected?.ring === r && selected.vertex === v;
+                  return (
+                    <li key={v} className={isSelected ? 'font-bold text-amber-800' : undefined}>
+                      <span>{formatLatLng(point)}</span>{' '}
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => onSelect({ ring: r, vertex: v })}
+                        className="font-sans underline"
+                      >
+                        Seleccionar
+                      </button>{' '}
+                      <button
+                        type="button"
+                        onClick={() => onInsertAfter({ ring: r, vertex: v })}
+                        className="font-sans underline"
+                      >
+                        Agregar después
+                      </button>{' '}
+                      <button
+                        type="button"
+                        disabled={!canDeleteVertex(editing.rings, r)}
+                        onClick={() => onDelete({ ring: r, vertex: v })}
+                        className="font-sans underline disabled:no-underline disabled:opacity-50"
+                      >
+                        Borrar
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            </li>
+          ))}
+        </ol>
+      </details>
+    </div>
+  );
+}
+
+function GeofenceRow({
+  geofence,
+  savedPolygon,
+  editedRings,
+  locked,
+  onStartEdit,
+  onStopEdit,
+  onSaved,
+}: {
+  geofence: Geofence;
+  savedPolygon: PolygonRings;
+  editedRings: EditableRings | null;
+  locked: boolean;
+  onStartEdit: () => void;
+  onStopEdit: () => void;
+  onSaved: (polygon: PolygonRings) => void;
+}) {
   const router = useRouter();
   const [saved, setSaved] = useState<GeofenceUpdateBody>(() => geofenceBody(geofence));
   const [form, setForm] = useState<GeofenceForm | null>(null);
@@ -66,6 +413,7 @@ function GeofenceRow({ geofence }: { geofence: Geofence }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const id = (field: string) => `geocerca-${geofence.id}-${field}`;
+  const polygonChanged = editedRings !== null && !samePolygon(savedPolygon, editedRings);
 
   function edit() {
     setForm(geofenceToForm({ ...geofence, ...saved }));
@@ -73,6 +421,14 @@ function GeofenceRow({ geofence }: { geofence: Geofence }) {
     setPending(null);
     setNotice(null);
     setError(null);
+    onStartEdit();
+  }
+
+  function cancel() {
+    setForm(null);
+    setPending(null);
+    setError(null);
+    onStopEdit();
   }
 
   function update(next: Partial<GeofenceForm>) {
@@ -84,18 +440,35 @@ function GeofenceRow({ geofence }: { geofence: Geofence }) {
 
   function review() {
     if (!form) return;
+    setError(null);
     const parsed = formToGeofenceBody(form);
     if (!parsed.ok) {
       setErrors(parsed.errors);
       return;
     }
-    const changes = diffSnapshots(saved, parsed.body);
+    if (polygonChanged) {
+      const issues = polygonIssues(editedRings);
+      if (issues.length > 0) {
+        setError(`Revisa el polígono: ${issues.map((issue) => issue.message).join(' ')}`);
+        return;
+      }
+    }
+    const body = geofenceSaveBody(parsed.body, savedPolygon, editedRings);
+    const { polygon, ...fields } = body;
+    const changes = diffSnapshots(saved, fields);
+    if (polygon) {
+      changes.push({
+        field: 'polygon',
+        label: 'Polígono',
+        ...describePolygonChange(savedPolygon, polygon),
+      });
+    }
     if (changes.length === 0) {
-      setForm(null);
+      cancel();
       setNotice('No hay cambios para guardar.');
       return;
     }
-    setPending({ body: parsed.body, changes });
+    setPending({ body, changes });
   }
 
   async function confirm() {
@@ -103,14 +476,18 @@ function GeofenceRow({ geofence }: { geofence: Geofence }) {
     setBusy(true);
     try {
       await saveGeofence(geofence.id, pending.body);
-      setSaved(pending.body);
+      const { polygon, ...fields } = pending.body;
+      setSaved(fields);
       setForm(null);
       setPending(null);
       setNotice('Geocerca guardada.');
+      onSaved(polygon ?? savedPolygon);
       router.refresh();
     } catch (failure) {
       setPending(null);
-      handleAdminFailure(failure, ADMIN_FARES_PATH, fareErrorMessage, setError);
+      const rejected = polygonRejectionMessage(toApiError(failure));
+      if (rejected) setError(rejected);
+      else handleAdminFailure(failure, ADMIN_FARES_PATH, fareErrorMessage, setError);
     } finally {
       setBusy(false);
     }
@@ -126,7 +503,14 @@ function GeofenceRow({ geofence }: { geofence: Geofence }) {
           </div>
           <div>
             <dt className="text-xs font-semibold text-stone-500 uppercase">Tipo</dt>
-            <dd>{GEOFENCE_KIND_LABEL[geofence.kind]}</dd>
+            <dd className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: GEOFENCE_KIND_COLOR[geofence.kind] }}
+              />
+              {GEOFENCE_KIND_LABEL[geofence.kind]}
+            </dd>
           </div>
           <div>
             <dt className="text-xs font-semibold text-stone-500 uppercase">Recargo</dt>
@@ -149,30 +533,19 @@ function GeofenceRow({ geofence }: { geofence: Geofence }) {
           <button
             type="button"
             onClick={edit}
-            className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100"
+            disabled={locked}
+            title={locked ? 'Termina primero la geocerca que estás editando.' : undefined}
+            className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100 disabled:opacity-60"
           >
             Editar
           </button>
         )}
       </div>
 
-      <details className="text-sm text-stone-600">
-        <summary className="cursor-pointer">
-          Polígono: {polygonSummary(geofence)} (solo lectura)
-        </summary>
-        <ol className="mt-2 flex flex-col gap-2">
-          {geofence.polygon.map((ring, index) => (
-            <li key={index}>
-              <p className="font-medium">{index === 0 ? 'Borde exterior' : `Hueco ${index}`}</p>
-              <ol className="ml-4 list-decimal font-mono text-xs">
-                {ring.map((point, i) => (
-                  <li key={i}>{formatLatLng(point)}</li>
-                ))}
-              </ol>
-            </li>
-          ))}
-        </ol>
-      </details>
+      <p className="text-sm text-stone-600">
+        Polígono: {polygonSummary({ polygon: editedRings ?? savedPolygon })}
+        {polygonChanged ? ' (con cambios sin guardar)' : ''}
+      </p>
 
       {form ? (
         <form
@@ -183,6 +556,7 @@ function GeofenceRow({ geofence }: { geofence: Geofence }) {
           }}
           className="flex flex-col gap-3 border-t border-stone-200 pt-3"
         >
+          <p className="text-sm text-stone-600">Edita el polígono sobre el mapa de arriba.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <label htmlFor={id('name')} className="text-sm font-medium text-stone-700">
@@ -278,7 +652,7 @@ function GeofenceRow({ geofence }: { geofence: Geofence }) {
               </button>
               <button
                 type="button"
-                onClick={() => setForm(null)}
+                onClick={cancel}
                 className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100"
               >
                 Cancelar

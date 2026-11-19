@@ -1,6 +1,6 @@
 import { FareRuleUpdateBodySchema } from '@panter/contracts';
 import { describe, expect, it } from 'vitest';
-import { AIRPORT, MOTOTAXI_RULE, TAXI_RULE } from '../server/fares-test-data';
+import { AIRPORT, MOTOTAXI_RULE, PERIPHERAL, TAXI_RULE } from '../server/fares-test-data';
 import {
   formatClock,
   formatLatLng,
@@ -149,8 +149,9 @@ describe('formulario de geocerca', () => {
     }
   });
 
-  it('resume el polígono en solo lectura', () => {
-    expect(polygonSummary(AIRPORT)).toBe('5 vértices');
+  it('resume el polígono sin contar el vértice de cierre', () => {
+    expect(polygonSummary(AIRPORT)).toBe('4 vértices');
+    expect(polygonSummary(PERIPHERAL)).toBe('4 vértices y 1 hueco de 4 vértices');
     expect(formatLatLng({ lat: 0.972, lng: -76.612 })).toBe('0,97200; −76,61200');
   });
 });

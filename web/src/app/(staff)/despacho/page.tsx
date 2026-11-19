@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { DispatchConsolePlaceholder } from '@/features/dispatch/components/dispatch-console-placeholder';
+import { DispatchConsole } from '@/features/dispatch/components/dispatch-console';
 
 export const metadata: Metadata = { title: 'Despacho', robots: { index: false } };
 
 export default function DespachoPage() {
-  return <DispatchConsolePlaceholder />;
+  return <DispatchConsole />;
 }

@@ -16,7 +16,7 @@ import { mockFetch, type Handler } from '@/features/drivers/server/drivers-test-
 import { ruleBody } from '../lib/fares';
 import { createFaresApi } from './fares-api';
 import { handleFareHistory, handleUpdateGeofence, handleUpdateRule } from './fares-routes';
-import { AIRPORT_ID, RULE_CHANGE, TAXI_RULE } from './fares-test-data';
+import { AIRPORT, AIRPORT_ID, RULE_CHANGE, TAXI_RULE } from './fares-test-data';
 
 let keys: TestKeys;
 beforeAll(async () => {
@@ -134,19 +134,13 @@ describe('PUT /api/admin/fares/rules/:vehicleType', () => {
 });
 
 describe('PUT /api/admin/fares/geofences/:id', () => {
-  it('envía solo nombre, recargo, appliesTo y active (el polígono no se edita aquí)', async () => {
+  it('sin polígono envía solo nombre, recargo, appliesTo y active', async () => {
     const { fetchMock, deps } = setup({
       [`PUT /admin/fares/geofences/${AIRPORT_ID}`]: () => jsonResponse({}),
     });
     const response = await handleUpdateGeofence(
       request('PUT', '/x', {
-        body: {
-          name: '  Aeropuerto VGZ ',
-          surcharge: 6000,
-          appliesTo: ['TAXI'],
-          active: true,
-          polygon: [[{ lat: 0, lng: 0 }]],
-        },
+        body: { name: '  Aeropuerto VGZ ', surcharge: 6000, appliesTo: ['TAXI'], active: true },
       }),
       AIRPORT_ID,
       deps,
@@ -157,6 +151,92 @@ describe('PUT /api/admin/fares/geofences/:id', () => {
       surcharge: 6000,
       appliesTo: ['TAXI'],
       active: true,
+    });
+  });
+
+  it('reenvía el polígono editado en el mapa (HU-304) con el Bearer de la cookie', async () => {
+    const { fetchMock, deps } = setup({
+      [`PUT /admin/fares/geofences/${AIRPORT_ID}`]: () => jsonResponse({}),
+    });
+    const polygon = AIRPORT.polygon;
+    const response = await handleUpdateGeofence(
+      request('PUT', '/x', {
+        body: {
+          name: 'Aeropuerto VGZ',
+          surcharge: 6000,
+          appliesTo: ['TAXI'],
+          active: true,
+          polygon,
+        },
+      }),
+      AIRPORT_ID,
+      deps,
+    );
+    expect(response.status).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)).polygon).toEqual(polygon);
+    expect(authorization(fetchMock)).toBe(`Bearer ${ACCESS}`);
+  });
+
+  it('rechaza un polígono con anillos de menos de 3 vértices sin llamar a la API', async () => {
+    const { fetchMock, deps } = setup({});
+    const response = await handleUpdateGeofence(
+      request('PUT', '/x', {
+        body: {
+          name: 'X',
+          surcharge: 1,
+          appliesTo: ['TAXI'],
+          active: true,
+          polygon: [[{ lat: 1, lng: -76.6 }]],
+        },
+      }),
+      AIRPORT_ID,
+      deps,
+    );
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('devuelve al navegador el mensaje y el detalle de la API si rechaza el polígono', async () => {
+    const issues = [
+      {
+        path: 'polygon',
+        code: 'invalid_geometry',
+        message: 'El polígono no es válido (Self-intersection[0.98 -76.6]).',
+      },
+    ];
+    const { deps } = setup({
+      [`PUT /admin/fares/geofences/${AIRPORT_ID}`]: () =>
+        jsonResponse(
+          {
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Revisa el dibujo de la zona: el polígono no es válido.',
+              details: issues,
+            },
+          },
+          400,
+        ),
+    });
+    const response = await handleUpdateGeofence(
+      request('PUT', '/x', {
+        body: {
+          name: 'X',
+          surcharge: 1,
+          appliesTo: ['TAXI'],
+          active: true,
+          polygon: AIRPORT.polygon,
+        },
+      }),
+      AIRPORT_ID,
+      deps,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Revisa el dibujo de la zona: el polígono no es válido.',
+        details: issues,
+      },
     });
   });
 
