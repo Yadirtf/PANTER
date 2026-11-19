@@ -57,6 +57,7 @@ function setup() {
       users: () => users,
       deliver: () => mail.deliver,
       consent: () => makeGetConsentStatus({ repo: consents }),
+      driverEligibility: () => ({ canUseDriverMode: async () => true }),
     }),
     consent: buildConsentFactories({ repo: () => consents }),
   });

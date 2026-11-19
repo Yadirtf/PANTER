@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { PlaceholderPage } from '@/shared/ui/placeholder-page';
 import { STAFF_PANEL_LABEL } from '@/features/navigation/role-home';
 import { ADMIN_DRIVERS_PATH } from '@/features/drivers/lib/drivers';
+import { ADMIN_FARES_PATH } from '@/features/fares/lib/fares';
 import { ADMIN_USERS_PATH } from '../lib/users';
 
 const linkClass =
@@ -41,6 +42,11 @@ export function AdminDashboardPlaceholder({
                   {pendingDrivers}
                 </span>
               ) : null}
+            </Link>
+          </li>
+          <li>
+            <Link href={ADMIN_FARES_PATH} className={linkClass}>
+              Tarifas
             </Link>
           </li>
         </ul>

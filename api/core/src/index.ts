@@ -1,6 +1,10 @@
 import { buildAdminFactories } from './composition/admin';
 import { buildAuthFactories, requireAuth, type IdentityFactories } from './composition/auth';
 import { buildConsentFactories } from './composition/consent';
+// HU-201/202/204: conductores
+import { buildDriverFactories } from './composition/drivers';
+import { driverRoutes, type DriverFactories } from './modules/drivers/http/routes';
+import { makeRequireConsent } from './modules/consent/http/require-consent';
 import { buildGetHealth } from './composition/health';
 import { buildTilesFactories } from './composition/tiles';
 // M2 · HU-305 (rutas)
@@ -23,6 +27,8 @@ export interface AppDeps {
   consent: ConsentFactories;
   /** Mapa base (HU-301). */
   tiles: TilesFactories;
+  /** HU-201/202/204: conductores. */
+  drivers: DriverFactories;
   /** M2 · HU-305 */
   routing: RoutingFactories;
 }
@@ -37,6 +43,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     admin: overrides.admin ?? buildAdminFactories(),
     consent: overrides.consent ?? buildConsentFactories(),
     tiles: overrides.tiles ?? buildTilesFactories(),
+    drivers: overrides.drivers ?? buildDriverFactories(),
     routing: overrides.routing ?? buildRoutingFactories(),
   };
   const app = createRouter();
@@ -52,6 +59,9 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   app.route('/', meRoutes(deps.auth, requireAuth));
   app.route('/', adminRoutes(deps.admin, requireAuth));
   app.route('/', consentRoutes(deps.consent, requireAuth));
+  // HU-201/202/204: conductores (solicitud, documentos y revisión por ADMIN).
+  const requireConsent = makeRequireConsent(deps.consent.consentStatus);
+  app.route('/', driverRoutes(deps.drivers, { requireAuth, requireConsent }));
   // M2 · HU-305: GET /routes
   app.route('/', routingRoutes(deps.routing, requireAuth));
 
