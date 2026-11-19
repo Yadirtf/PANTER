@@ -53,7 +53,7 @@ interface ErrorJson {
   error: { code: string; message: string };
 }
 
-function setup(options: { activeTrip?: boolean } = {}) {
+function setup(options: { activeTrip?: boolean; driverApproved?: boolean } = {}) {
   const users = new MemoryUserRepository();
   const mail = captureDelivery();
   const setUnavailable = vi.fn(async () => {});
@@ -63,6 +63,7 @@ function setup(options: { activeTrip?: boolean } = {}) {
       deliver: () => mail.deliver,
       activeTrips: () => ({ hasActiveTrip: async () => !!options.activeTrip }),
       driverAvailability: () => ({ setUnavailable }),
+      driverEligibility: () => ({ canUseDriverMode: async () => options.driverApproved ?? true }),
       consent: memoryConsent().reader,
     }),
   });
@@ -181,6 +182,15 @@ describe('POST /me/mode', () => {
       code: 'MODE_NOT_ALLOWED',
       message: 'Esta opción no está disponible en tu modo actual o para tu cuenta.',
     });
+  });
+
+  it('HU-201: DRIVER suspendido (verificación no APPROVED) → 403 MODE_NOT_ALLOWED', async () => {
+    const { login, post, users } = setup({ driverApproved: false });
+    const pair = await login();
+    users.users.get(pair.user.id)!.roles = [Role.PASSENGER, Role.DRIVER];
+    const res = await post(AuthRoutes.ME_MODE, { mode: 'driver' }, pair.accessToken);
+    expect(res.status).toBe(403);
+    expect((await res.json<ErrorJson>()).error.code).toBe('MODE_NOT_ALLOWED');
   });
 
   it('con un viaje en curso → 409 MODE_CHANGE_ACTIVE_TRIP', async () => {

@@ -11,6 +11,7 @@ import type {
   AccessTokenSigner,
   Clock,
   ConsentStatusReader,
+  DriverModeEligibility,
   RefreshTokenCodec,
   RefreshTokenStore,
   UserRepository,
@@ -82,6 +83,11 @@ export interface RefreshDeps {
   clock?: Clock;
   /** Se llama al detectar la reutilización de un refresh token ya rotado (para logs). */
   onReuseDetected?: (info: { userId: string; familyId: string }) => void;
+  /**
+   * Verificación del conductor (HU-201). Si la sesión estaba en modo `driver` y el conductor ya
+   * no está APPROVED (suspendido), el par nuevo sale en modo `passenger`.
+   */
+  driverEligibility?: DriverModeEligibility;
 }
 
 export type RefreshSession = (input: RefreshBody) => Promise<TokenPairResponse>;
@@ -94,7 +100,8 @@ export type RefreshSession = (input: RefreshBody) => Promise<TokenPairResponse>;
  *   `REFRESH_TOKEN_INVALID`. El dueño legítimo tendrá que volver a ingresar.
  * - Familia revocada (logout o reutilización previa) → `REFRESH_TOKEN_INVALID`.
  * - Si no, el token se marca como rotado y se emite un par nuevo de la misma familia, con los
- *   roles actuales de la base de datos y el modo activo de la sesión. Cuenta suspendida o
+ *   roles actuales de la base de datos y el modo activo de la sesión (o `passenger` si el
+ *   conductor fue suspendido, HU-204). Cuenta suspendida o
  *   borrada → se revoca la familia y `ACCOUNT_SUSPENDED` (o `REFRESH_TOKEN_INVALID` si ya no
  *   existe).
  */
@@ -122,7 +129,13 @@ export function makeRefreshSession(deps: RefreshDeps): RefreshSession {
       await deps.refreshStore.revokeFamily(record.familyId, familyUntil());
       throw user ? AuthErrors.accountSuspended() : AuthErrors.refreshTokenInvalid();
     }
-    return deps.issueSession(user, record.activeMode, record.familyId);
+    const mode =
+      record.activeMode === ActiveMode.DRIVER &&
+      deps.driverEligibility &&
+      !(await deps.driverEligibility.canUseDriverMode(user.id))
+        ? ActiveMode.PASSENGER
+        : record.activeMode;
+    return deps.issueSession(user, mode, record.familyId);
   };
 }
 
