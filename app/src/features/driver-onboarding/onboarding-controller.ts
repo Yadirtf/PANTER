@@ -1,10 +1,17 @@
 // Estado del onboarding de conductor (HU-203): perfil de GET /drivers/me, envío del vehículo y
-// documentos aceptados por la cola de subida. TypeScript puro; React lo consume con
+// documentos aceptados por la cola de subida. HU-205: aviso cuando cambia el estado de la
+// solicitud entre dos consultas (primer plano, deslizar para actualizar o push de E10). TypeScript puro; React lo consume con
 // useSyncExternalStore (ver use-driver-onboarding.ts).
-import type { DocumentType, DriverDocument, DriverProfile } from '@panter/contracts';
+import type {
+  DocumentType,
+  DriverDocument,
+  DriverProfile,
+  DriverVerificationStatus,
+} from '@panter/contracts';
 import { errorMessage } from '../../shared/api/error-messages';
 import { toApiError } from '../../shared/api/errors';
 import type { DriversApi } from './api/drivers-api';
+import { type StatusNotice, statusTransition } from './status/onboarding-status';
 import {
   type ApplyErrorDisplay,
   applyErrorDisplay,
@@ -23,6 +30,8 @@ export interface OnboardingState {
   readonly refreshing: boolean;
   /** Mensaje del último refresco fallido (sin red…); se conserva el último perfil conocido. */
   readonly error: string | null;
+  /** Aviso del último cambio de estado de la solicitud (aprobada, rechazada…), hasta cerrarlo. */
+  readonly notice: StatusNotice | null;
 }
 
 export type ApplyResult =
@@ -37,7 +46,13 @@ export interface OnboardingControllerDeps {
   now?: () => Date;
 }
 
-const INITIAL: OnboardingState = { status: 'idle', profile: null, refreshing: false, error: null };
+const INITIAL: OnboardingState = {
+  status: 'idle',
+  profile: null,
+  refreshing: false,
+  error: null,
+  notice: null,
+};
 
 type Listener = () => void;
 
@@ -59,6 +74,8 @@ export class OnboardingController {
   /** Descarta respuestas de GET /drivers/me que llegan después de otra más nueva. */
   private seq = 0;
   private inflight: Promise<void> | null = null;
+  /** Último estado de la solicitud visto; `undefined` hasta la primera carga. */
+  private knownStatus: DriverVerificationStatus | null | undefined = undefined;
 
   constructor(deps: OnboardingControllerDeps) {
     this.api = deps.api;
@@ -78,9 +95,16 @@ export class OnboardingController {
     for (const listener of this.listeners) listener();
   }
 
-  /** Perfil nuevo (de GET, del apply o de un documento subido). Punto de enganche de HU-205. */
+  /** Perfil nuevo (de GET, del apply o de un documento subido): detecta el cambio de estado. */
   protected applyProfile(profile: DriverProfile | null): void {
-    this.setState({ profile, status: 'ready', error: null });
+    const next = profile?.verificationStatus ?? null;
+    const notice = statusTransition(this.knownStatus, next) ?? this.state.notice;
+    this.knownStatus = next;
+    this.setState({ profile, status: 'ready', error: null, notice });
+  }
+
+  dismissNotice(): void {
+    if (this.state.notice) this.setState({ notice: null });
   }
 
   /** GET /drivers/me. Las llamadas simultáneas comparten la misma petición. */
@@ -138,6 +162,7 @@ export class OnboardingController {
   reset(): void {
     this.seq += 1;
     this.inflight = null;
+    this.knownStatus = undefined;
     this.state = INITIAL;
     for (const listener of this.listeners) listener();
   }

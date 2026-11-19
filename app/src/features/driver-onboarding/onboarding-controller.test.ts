@@ -51,6 +51,7 @@ describe('OnboardingController', () => {
       profile: null,
       refreshing: false,
       error: null,
+      notice: null,
     });
   });
 
@@ -165,6 +166,7 @@ describe('OnboardingController', () => {
       profile: null,
       refreshing: false,
       error: null,
+      notice: null,
     });
   });
 });
