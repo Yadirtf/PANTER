@@ -1,6 +1,6 @@
 import type { ConfigContext } from 'expo/config';
 import { afterEach, describe, expect, it } from 'vitest';
-import buildConfig, { CAMERA_PERMISSION_TEXT } from './app.config';
+import buildConfig, { CAMERA_PERMISSION_TEXT, LOCATION_PERMISSION_TEXT } from './app.config';
 
 const KEYS = [
   'APP_ENV',
@@ -93,5 +93,21 @@ describe('app.config', () => {
       },
     ]);
     expect(CAMERA_PERMISSION_TEXT).toMatch(/^PANTER usa la cámara para fotografiar tus documentos/);
+  });
+
+  it('pide ubicación solo en primer plano, con el texto en español (HU-303)', () => {
+    const plugins = withEnv({}).plugins ?? [];
+    const location = plugins.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-location',
+    ) as [string, Record<string, unknown>] | undefined;
+    expect(location?.[1]).toMatchObject({
+      locationWhenInUsePermission: LOCATION_PERMISSION_TEXT,
+      isAndroidBackgroundLocationEnabled: false,
+      isAndroidForegroundServiceEnabled: false,
+    });
+    expect(LOCATION_PERMISSION_TEXT).toMatch(
+      /^PANTER usa tu ubicación mientras tienes la app abierta/,
+    );
+    expect(plugins).toContain('@maplibre/maplibre-react-native');
   });
 });

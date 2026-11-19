@@ -19,6 +19,10 @@ const BASE_APPLICATION_ID = 'co.panter.app';
 export const CAMERA_PERMISSION_TEXT =
   'PANTER usa la cámara para fotografiar tus documentos de conductor (cédula, licencia, tarjeta de propiedad, SOAT y revisión técnico-mecánica) y enviarlos a revisión.';
 
+/** Texto del permiso de ubicación en primer plano (HU-303). Solo mientras la app está abierta. */
+export const LOCATION_PERMISSION_TEXT =
+  'PANTER usa tu ubicación mientras tienes la app abierta para mostrarte en el mapa, saber dónde recogerte y calcular la tarifa de tu viaje.';
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const { appEnv, apiUrl } = resolveEnvironment({
     APP_ENV: process.env.APP_ENV,
@@ -67,6 +71,23 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           barcodeScannerEnabled: false,
         },
       ],
+      // Ubicación en primer plano (HU-303): sin permiso de segundo plano ni servicio en primer
+      // plano (el GPS en segundo plano del conductor llega en HU-502).
+      [
+        'expo-location',
+        {
+          locationWhenInUsePermission: LOCATION_PERMISSION_TEXT,
+          locationAlwaysAndWhenInUsePermission: false,
+          locationAlwaysPermission: false,
+          motionUsagePermission: false,
+          isAndroidBackgroundLocationEnabled: false,
+          isAndroidForegroundServiceEnabled: false,
+          isIosBackgroundLocationEnabled: false,
+        },
+      ],
+      // Mapa nativo (HU-303). Sin opciones: MapLibre Native Android 13.6.1, la versión que
+      // fija @maplibre/maplibre-react-native 11.5.1 (incluye la fuente pmtiles://).
+      '@maplibre/maplibre-react-native',
     ],
     experiments: {
       typedRoutes: true,
