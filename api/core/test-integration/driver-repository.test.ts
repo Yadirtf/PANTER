@@ -183,4 +183,77 @@ describe.skipIf(!url)('DrizzleDriverRepository (integración)', () => {
       },
     ]);
   });
+  it('HU-202: upsert del documento como SUBMITTED, limpia la revisión y respeta el estado', async () => {
+    const u = await user('upsert');
+    const admin = await user('upsert-admin');
+    const key = (n: string) => `drivers/${u.id}/CEDULA/${n}`;
+    const input = (n: string) =>
+      ({
+        userId: u.id,
+        type: 'CEDULA',
+        r2Key: key(n),
+        contentType: 'image/png',
+        sizeBytes: 2048,
+      }) as const;
+    // Sin perfil no escribe (ni rompe la llave foránea).
+    expect(await repo.upsertDocument(input('a'))).toBeNull();
+    await repo.create(u.id, moto());
+    const first = await repo.upsertDocument(input('a'));
+    expect(first).toEqual({
+      userId: u.id,
+      type: 'CEDULA',
+      r2Key: key('a'),
+      contentType: 'image/png',
+      sizeBytes: 2048,
+      status: 'SUBMITTED',
+      rejectionReason: null,
+      uploadedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+      reviewedAt: null,
+      reviewedBy: null,
+    });
+    await db
+      .update(schema.driverDocuments)
+      .set({
+        status: 'REJECTED',
+        rejectionReason: 'La foto de la cédula está borrosa',
+        reviewedAt: new Date(),
+        reviewedBy: admin.id,
+      })
+      .where(eq(schema.driverDocuments.userId, u.id));
+    await db
+      .update(schema.driverProfiles)
+      .set({ verificationStatus: 'REJECTED' })
+      .where(eq(schema.driverProfiles.userId, u.id));
+    const again = await repo.upsertDocument({
+      ...input('b'),
+      contentType: 'image/jpeg',
+      sizeBytes: 999,
+    });
+    expect(again).toMatchObject({
+      r2Key: key('b'),
+      status: 'SUBMITTED',
+      sizeBytes: 999,
+      contentType: 'image/jpeg',
+    });
+    const [row] = await db
+      .select()
+      .from(schema.driverDocuments)
+      .where(eq(schema.driverDocuments.userId, u.id));
+    expect(row).toMatchObject({
+      status: 'SUBMITTED',
+      rejectionReason: null,
+      reviewedAt: null,
+      reviewedBy: null,
+    });
+    expect(await repo.listDocuments(u.id)).toHaveLength(1);
+
+    for (const status of ['APPROVED', 'SUSPENDED'] as const) {
+      await db
+        .update(schema.driverProfiles)
+        .set({ verificationStatus: status })
+        .where(eq(schema.driverProfiles.userId, u.id));
+      expect(await repo.upsertDocument(input('c'))).toBeNull();
+    }
+    expect((await repo.listDocuments(u.id))[0]?.r2Key).toBe(key('b'));
+  });
 });

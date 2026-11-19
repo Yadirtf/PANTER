@@ -1,5 +1,6 @@
-import { DriverAvailability, DriverVerificationStatus } from '@panter/contracts';
+import { DocumentStatus, DriverAvailability, DriverVerificationStatus } from '@panter/contracts';
 import { and, eq, ne, sql } from 'drizzle-orm';
+import { rowsOf } from '../../../shared/infrastructure/db/rows';
 import {
   driverDocuments,
   driverProfiles,
@@ -57,6 +58,12 @@ export function toDocumentRecord(row: DriverDocumentRow): DriverDocumentRecord {
     reviewedBy: row.reviewedBy,
   };
 }
+
+/** RETURNING de `db.execute`: la fecha ya formateada en UTC (igual con neon-http y postgres-js). */
+type RawDocumentRow = Pick<
+  DriverDocumentRow,
+  'userId' | 'type' | 'r2Key' | 'contentType' | 'sizeBytes' | 'status' | 'rejectionReason'
+> & { uploadedAt: string };
 
 const vehicleColumns = (v: Vehicle) => ({
   vehicleType: v.vehicleType,
@@ -140,6 +147,46 @@ export function createDrizzleDriverRepository(db: AnyPgDatabase): DriverAccountR
           ? { ok: true as const, profile: toProfileRecord(row) }
           : { ok: false as const, reason: 'not_rejected' as const };
       }),
+
+    // Una sola sentencia: inserta o reemplaza el documento vigente de ese tipo solo si el
+    // perfil está PENDING o REJECTED. Reemplazar deja SUBMITTED y limpia la revisión anterior;
+    // el objeto R2 anterior se conserva con su propia clave (auditoría).
+    async upsertDocument({ userId, type, r2Key, contentType, sizeBytes }) {
+      const result = await db.execute(sql`
+        WITH editable AS (
+          SELECT user_id FROM driver_profiles
+          WHERE user_id = ${userId}::uuid
+            AND verification_status IN (${DriverVerificationStatus.PENDING}::driver_verification_status,
+                                        ${DriverVerificationStatus.REJECTED}::driver_verification_status)
+        )
+        INSERT INTO driver_documents (user_id, type, r2_key, content_type, size_bytes, status)
+        SELECT user_id, ${type}::document_type, ${r2Key}, ${contentType}, ${sizeBytes},
+               ${DocumentStatus.SUBMITTED}::document_status
+        FROM editable
+        ON CONFLICT (user_id, type) DO UPDATE SET
+          r2_key = EXCLUDED.r2_key,
+          content_type = EXCLUDED.content_type,
+          size_bytes = EXCLUDED.size_bytes,
+          status = EXCLUDED.status,
+          rejection_reason = NULL,
+          uploaded_at = now(),
+          reviewed_at = NULL,
+          reviewed_by = NULL
+        RETURNING user_id AS "userId", type, r2_key AS "r2Key", content_type AS "contentType",
+                  size_bytes AS "sizeBytes", status, rejection_reason AS "rejectionReason",
+                  to_char(uploaded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                    AS "uploadedAt"
+      `);
+      const row = rowsOf<RawDocumentRow>(result)[0];
+      return row
+        ? {
+            ...row,
+            contentType: row.contentType as DocumentContentType,
+            reviewedAt: null,
+            reviewedBy: null,
+          }
+        : null;
+    },
 
     async setUnavailable(userId) {
       await db

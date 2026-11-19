@@ -37,6 +37,9 @@ export default defineConfig({
         'src/modules/drivers/**': CRITICAL,
         // M2 · HU-305, HU-401, HU-402: rutas y tarifas.
         'src/modules/routing/**': M2_CRITICAL,
+        'src/modules/pricing/**': M2_CRITICAL,
+        // HU-402: el cálculo de la tarifa es una función pura de dominio con cobertura ≥ 95 %.
+        'src/modules/pricing/domain/**': { statements: 95, branches: 95, functions: 95, lines: 95 },
       },
     },
     projects: [
