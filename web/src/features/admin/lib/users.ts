@@ -7,6 +7,10 @@ import {
   type StaffRole,
   type UserStatus,
 } from '@panter/contracts';
+import { formatDate } from '@/shared/lib/format';
+
+/** Fecha en hora de Colombia; vive en shared/lib/format y se reexporta por compatibilidad. */
+export { formatDate };
 
 export const ADMIN_USERS_PATH = '/admin/usuarios';
 
@@ -43,21 +47,6 @@ export function grantableRoles(user: AdminUser): StaffRole[] {
 export function canRevoke(currentUserId: string, user: AdminUser, role: Role): boolean {
   if (!(MANAGED_ROLES as readonly Role[]).includes(role)) return false;
   return !(role === Role.ADMIN && user.id === currentUserId);
-}
-
-const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-/** Colombia no tiene horario de verano: UTC−5 todo el año. */
-const COLOMBIA_OFFSET_MS = -5 * 60 * 60 * 1000;
-
-/**
- * "2 nov 2026, 10:30" en hora de Colombia. Se arma a mano y no con Intl para que el servidor
- * (Worker) y el navegador produzcan exactamente el mismo texto, sin depender de su ICU.
- */
-export function formatDate(iso: string): string {
-  const local = new Date(new Date(iso).getTime() + COLOMBIA_OFFSET_MS);
-  const hh = String(local.getUTCHours()).padStart(2, '0');
-  const mm = String(local.getUTCMinutes()).padStart(2, '0');
-  return `${local.getUTCDate()} ${MONTHS[local.getUTCMonth()]} ${local.getUTCFullYear()}, ${hh}:${mm}`;
 }
 
 /** "Otorgado por ana@x.co el 18 nov 2026, 9:30 a. m." */
