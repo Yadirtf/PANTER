@@ -31,6 +31,8 @@ export default defineConfig({
         'src/modules/auth/**': CRITICAL,
         'src/modules/admin/**': CRITICAL,
         'src/modules/consent/**': CRITICAL,
+        // Mapa base (HU-301).
+        'src/modules/tiles/**': CRITICAL,
         // HU-201/202/204: onboarding de conductores.
         'src/modules/drivers/**': CRITICAL,
         // M2 · HU-305, HU-401, HU-402: rutas y tarifas.

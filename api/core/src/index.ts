@@ -6,6 +6,7 @@ import { buildDriverFactories } from './composition/drivers';
 import { driverRoutes, type DriverFactories } from './modules/drivers/http/routes';
 import { makeRequireConsent } from './modules/consent/http/require-consent';
 import { buildGetHealth } from './composition/health';
+import { buildTilesFactories } from './composition/tiles';
 // M2 · HU-305 (rutas)
 import { buildRoutingFactories } from './composition/routing';
 import { routingRoutes, type RoutingFactories } from './modules/routing/http/routes';
@@ -22,6 +23,7 @@ import { consentRoutes, type ConsentFactories } from './modules/consent/http/rou
 import { meRoutes } from './modules/auth/http/me-routes';
 import { authRoutes } from './modules/auth/http/routes';
 import { healthRoutes } from './modules/health/http/routes';
+import { tilesRoutes, type TilesFactories } from './modules/tiles/http/routes';
 import { createRouter } from './shared/http/create-app';
 import { corsMiddleware } from './shared/http/cors';
 import { errorHandler, notFoundHandler } from './shared/http/errors';
@@ -31,6 +33,8 @@ export interface AppDeps {
   auth: IdentityFactories;
   admin: AdminFactories;
   consent: ConsentFactories;
+  /** Mapa base (HU-301). */
+  tiles: TilesFactories;
   /** HU-201/202/204: conductores. */
   drivers: DriverFactories;
   /** M2 · HU-305 */
@@ -50,6 +54,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     auth: overrides.auth ?? buildAuthFactories(),
     admin: overrides.admin ?? buildAdminFactories(),
     consent: overrides.consent ?? buildConsentFactories(),
+    tiles: overrides.tiles ?? buildTilesFactories(),
     drivers: overrides.drivers ?? buildDriverFactories(),
     routing: overrides.routing ?? buildRoutingFactories(),
     pricingAdmin: overrides.pricingAdmin ?? buildPricingAdminFactories(),
@@ -59,6 +64,8 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
 
   app.onError(errorHandler);
   app.notFound(notFoundHandler);
+  // Mapa base (HU-301): antes del CORS restringido porque /tiles tiene CORS abierto propio.
+  app.route('/', tilesRoutes(deps.tiles));
   app.use('*', corsMiddleware());
 
   app.route('/', healthRoutes(buildGetHealth));

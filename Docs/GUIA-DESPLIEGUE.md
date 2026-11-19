@@ -402,6 +402,93 @@ Sesiones: cada uso de `POST /auth/refresh` revoca el refresh token anterior. Si 
 reutiliza uno ya usado (posible robo), la API revoca toda esa sesión. `POST /auth/logout` solo
 necesita el refresh token. En KV se guarda el SHA-256 del refresh token, nunca el token.
 
+## M2 · Mapa base
+
+El mapa de la web y de la app es propio (HU-301): un extracto de OpenStreetMap de Protomaps que
+cubre Villagarzón, Mocoa y el corredor a Puerto Asís (la caja `SERVICE_AREA` de
+`packages/contracts/src/places.ts`) hasta zoom 15, en un archivo `.pmtiles` guardado en R2. Lo
+sirve `panter-api` en `GET /tiles/<archivo>`, con rangos HTTP y caché. Junto a él se guardan los
+glifos (fuentes) y sprites del estilo (HU-302), para no depender de CDNs externos y para que el
+conductor pueda usar el mapa sin señal.
+
+| Qué            | Staging                | Production     |
+| -------------- | ---------------------- | -------------- |
+| Bucket R2      | `panter-tiles-staging` | `panter-tiles` |
+| Binding        | `TILES`                | `TILES`        |
+| Archivo vigente | `/tiles/basemap.json` | igual          |
+
+No hay secretos nuevos: el workflow usa `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` del
+Environment, y el token ya tiene **Workers R2 Storage · Edit** (paso 2.3). A diferencia de
+`panter-documents-*`, su contenido **es público**: la API lo entrega sin iniciar sesión. Aun así
+no hay que activarle acceso público ni dominio propio en R2, porque nadie lo lee directamente.
+
+### M2.1 · Crear el bucket (antes de fusionar HU-301)
+
+`api/core/wrangler.jsonc` declara el binding `TILES`, y `wrangler deploy` falla si el bucket no
+existe. Créalo **antes** de fusionar el PR, o el siguiente Deploy api-core fallará:
+
+1. Dashboard de Cloudflare → **Storage & Databases → R2 Object Storage → Create bucket**.
+2. Nombre exacto: `panter-tiles-staging`. _Location_: **Automatic**. _Default storage class_:
+   **Standard**. **Create bucket**.
+3. No configures nada más (ni _Public access_, ni CORS del bucket, ni dominio): la API lo sirve.
+
+Para producción, el mismo paso con el nombre `panter-tiles`.
+
+Si el binding llegara a faltar, `/tiles/...` responde **503** `TILES_UNAVAILABLE` ("El mapa base
+no está disponible…") y `/health` sigue funcionando.
+
+### M2.2 · Generar y subir el mapa (workflow Mapa base)
+
+1. Primero despliega api-core con el PR de HU-301 ya fusionado (Deploy api-core, paso 6.2).
+2. **Actions → Mapa base → Run workflow** → _Branch_: `develop` → _Ambiente_: `staging` →
+   _Fecha del build_: déjala **vacía** (usa el build diario más reciente de Protomaps) o pon
+   una fecha `AAAAMMDD` de los últimos días → **Run workflow**.
+3. Tarda unos minutos. El workflow:
+   - descarga la CLI `pmtiles` con versión y checksum fijados;
+   - extrae la caja de servicio de `https://build.protomaps.com/<fecha>.pmtiles` hasta z15;
+   - lo verifica (`pmtiles verify` y `pmtiles show`: zoom máximo, límites, tipo de teselas);
+   - sube a R2 los glifos y sprites (de `protomaps/basemaps-assets`, commit fijado),
+     después `panter-<fecha>.pmtiles` y al final `basemap.json`, que apunta al archivo nuevo.
+4. Comprueba en el navegador:
+   - `https://panter-api-staging.<subdominio>.workers.dev/tiles/basemap.json` → JSON con
+     `file`, `build`, `bounds`, `maxzoom: 15` y `size`;
+   - `…/tiles/panter-<fecha>.pmtiles` descarga el archivo (puede pesar decenas de MB). También puedes
+     abrirlo en [pmtiles.io](https://pmtiles.io) pegando esa URL.
+
+Production: igual, con _Branch_ `main` y _Ambiente_ `production` (el workflow rechaza
+production desde otra rama).
+
+### M2.3 · Regenerar el mapa
+
+OpenStreetMap cambia (por ejemplo, cuando se mapean en las pruebas de campo las vías hacia los
+destinos turísticos). Para tomar los cambios basta con volver a correr el workflow (M2.2): el
+archivo nuevo se llama con su fecha (`panter-<fecha>.pmtiles`), así que nunca reemplaza al
+anterior, y los clientes lo toman de `basemap.json` en menos de 5 minutos. El archivo viejo
+puede borrarse del bucket después de unos días (R2 → `panter-tiles-staging` → **Objects**).
+
+Desde tu computador (Linux x86-64, o con `pmtiles` 1.31.2 en el PATH):
+
+```bash
+# Solo extraer y verificar, sin subir (queda en ./mapa-base, ignorada por git):
+scripts/generar_mapa.sh
+# Extraer y subir a staging:
+CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… scripts/generar_mapa.sh --ambiente staging
+```
+
+`scripts/generar_mapa.sh --help` explica las opciones (`--fecha`, `--bbox`, `--maxzoom`,
+`--sin-assets`). Para cambiar la caja de servicio, cambia `SERVICE_AREA` en `packages/contracts`
+y `SERVICE_AREA_BBOX` en el script a la vez (una prueba de api-core exige que coincidan). Las
+versiones fijadas (CLI pmtiles y commit de basemaps-assets) están al principio del script.
+
+Notas:
+
+- Protomaps solo guarda los builds de los últimos días: una fecha vieja falla con "no existe el
+  build". Deja la fecha vacía.
+- `wrangler r2 object put` sube archivos de hasta 300 MiB; el script lo comprueba antes y, si
+  se pasa, pide bajar `--maxzoom` o reducir la caja.
+- La caché de la API (Cache API) solo guarda copias con dominio propio; en `*.workers.dev` cada
+  petición lee R2. Los navegadores y la app sí guardan las teselas (ETag y `Cache-Control`).
+
 ## M2 · Documentos de conductores
 
 Desde HU-202 los solicitantes suben las fotos de sus documentos (cédula, licencia, tarjeta de
@@ -575,6 +662,8 @@ pnpm --filter @panter/web dev            # terminal 3 → http://localhost:3000
 | `KV namespace … not found` o `is not valid`                           | `api/core/wrangler.jsonc` todavía tiene el ID de marcador (paso 3)                                            |
 | `bucket … does not exist` o `queue … does not exist`                  | Falta crear el recurso con el nombre exacto, o R2/Queues no están activados (paso 3)                          |
 | Error del service binding `REALTIME` al desplegar api-core            | Despliega primero api-realtime (paso 6.1)                                                                     |
+| `bucket panter-tiles-staging does not exist` al desplegar api-core    | Crea el bucket del mapa base (M2.1)                                                                           |
+| `/tiles/basemap.json` responde 404                                    | Aún no se corrió el workflow **Mapa base** en ese ambiente (M2.2)                                             |
 | Las migraciones fallan con `password authentication failed`           | Cadena de Neon mal copiada en `DATABASE_URL` de GitHub; cópiala de nuevo desde **Connect**                    |
 | `/health` responde, pero lo que use la base de datos falla            | Falta el secreto `DATABASE_URL` del Worker (paso 6.2)                                                         |
 | La web muestra la API como caída                                      | `NEXT_PUBLIC_API_URL` con error o con `/` al final; corrígela y relanza **Deploy web**                         |
