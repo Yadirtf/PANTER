@@ -1,0 +1,32 @@
+{
+  "bbox": [-76.61716, 0.97893, -76.60531, 1.02951],
+  "routes": [
+    {
+      "summary": { "distance": 5876.4, "duration": 548.9 },
+      "bbox": [-76.61716, 0.97893, -76.60531, 1.02951],
+      "geometry": "mahE~csrMrBLlE^jEb@bFXvIZtJ]fM{AxPaClRgC~SeC|UuCnV}CzVqDhWwD`VeE~TsErRaFjO_FhJqD~EaBrBi@",
+      "way_points": [0, 21]
+    }
+  ],
+  "metadata": {
+    "attribution": "openrouteservice.org | OpenStreetMap contributors",
+    "service": "routing",
+    "timestamp": 1795461600000,
+    "query": {
+      "coordinates": [
+        [-76.6165, 1.0295],
+        [-76.6053, 0.9789]
+      ],
+      "profile": "driving-car",
+      "profileName": "driving-car",
+      "format": "json",
+      "instructions": false,
+      "units": "m"
+    },
+    "engine": {
+      "version": "9.3.0",
+      "build_date": "2025-06-10T11:21:39Z",
+      "graph_date": "2026-11-09T12:44:07Z"
+    }
+  }
+}

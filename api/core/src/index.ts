@@ -6,6 +6,9 @@ import { buildDriverFactories } from './composition/drivers';
 import { driverRoutes, type DriverFactories } from './modules/drivers/http/routes';
 import { makeRequireConsent } from './modules/consent/http/require-consent';
 import { buildGetHealth } from './composition/health';
+// M2 · HU-305 (rutas)
+import { buildRoutingFactories } from './composition/routing';
+import { routingRoutes, type RoutingFactories } from './modules/routing/http/routes';
 import { adminRoutes, type AdminFactories } from './modules/admin/http/routes';
 import { consentRoutes, type ConsentFactories } from './modules/consent/http/routes';
 import { meRoutes } from './modules/auth/http/me-routes';
@@ -22,6 +25,8 @@ export interface AppDeps {
   consent: ConsentFactories;
   /** HU-201/202/204: conductores. */
   drivers: DriverFactories;
+  /** M2 · HU-305 */
+  routing: RoutingFactories;
 }
 
 /**
@@ -34,6 +39,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     admin: overrides.admin ?? buildAdminFactories(),
     consent: overrides.consent ?? buildConsentFactories(),
     drivers: overrides.drivers ?? buildDriverFactories(),
+    routing: overrides.routing ?? buildRoutingFactories(),
   };
   const app = createRouter();
 
@@ -49,6 +55,8 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   // HU-201/202/204: conductores (solicitud, documentos y revisión por ADMIN).
   const requireConsent = makeRequireConsent(deps.consent.consentStatus);
   app.route('/', driverRoutes(deps.drivers, { requireAuth, requireConsent }));
+  // M2 · HU-305: GET /routes
+  app.route('/', routingRoutes(deps.routing, requireAuth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
   // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).

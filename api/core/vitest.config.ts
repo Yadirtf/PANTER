@@ -15,6 +15,8 @@ import { defineConfig } from 'vitest/config';
 // Los umbrales por carpeta hacen fallar `pnpm test` si baja la cobertura de auth, email, admin,
 // consent y drivers.
 const CRITICAL = { statements: 90, branches: 85, functions: 90, lines: 90 };
+// M2 · rutas y tarifas: 90 % en todo.
+const M2_CRITICAL = { statements: 90, branches: 90, functions: 90, lines: 90 };
 
 export default defineConfig({
   test: {
@@ -31,6 +33,8 @@ export default defineConfig({
         'src/modules/consent/**': CRITICAL,
         // HU-201/202/204: onboarding de conductores.
         'src/modules/drivers/**': CRITICAL,
+        // M2 · HU-305, HU-401, HU-402: rutas y tarifas.
+        'src/modules/routing/**': M2_CRITICAL,
       },
     },
     projects: [
