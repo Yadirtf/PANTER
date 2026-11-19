@@ -1,0 +1,23 @@
+{
+  "name": "@panter/map-style",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Estilo MapLibre de PANTER (claro y oscuro), puntos clave e íconos del mapa",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@maplibre/maplibre-gl-style-spec": "26.5.1",
+    "@panter/contracts": "workspace:*",
+    "@protomaps/basemaps": "5.7.2"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0"
+  }
+}
