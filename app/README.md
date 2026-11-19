@@ -115,13 +115,14 @@ Pruebas de los scripts de release: `bash scripts/probar_app_release.sh`.
 
 Organizado por funcionalidad en `src/`:
 
-| Carpeta          | Contenido                                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| `app/`           | Rutas de Expo Router por grupo: `(auth)`, `(web-only)`, `(onboarding)`, `(passenger)`, `(driver)` |
-| `shared/api/`    | Cliente HTTP tipado (`fetch` + esquemas Zod de `@panter/contracts`) y mensajes                    |
-| `features/auth/` | Login OTP, store de sesión y almacenamiento en `expo-secure-store`                                |
-| `navigation/`    | `resolveRootGroup`: grupo de rutas según la sesión                                                |
-| `features/map/`  | `<PanterMap>` (HU-303): mapa base, ubicación y mapa sin señal del conductor                       |
+| Carpeta                   | Contenido                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `app/`                    | Rutas de Expo Router por grupo: `(auth)`, `(web-only)`, `(onboarding)`, `(passenger)`, `(driver)` |
+| `shared/api/`             | Cliente HTTP tipado (`fetch` + esquemas Zod de `@panter/contracts`) y mensajes                    |
+| `features/auth/`          | Login OTP, store de sesión y almacenamiento en `expo-secure-store`                                |
+| `navigation/`             | `resolveRootGroup`: grupo de rutas según la sesión                                                |
+| `features/map/`           | `<PanterMap>` (HU-303): mapa base, ubicación y mapa sin señal del conductor                       |
+| `features/fare-estimate/` | Destino, vehículo y estimado del pasajero con `POST /fares/estimate` (HU-404)                     |
 
 - Todo error llega a la interfaz como `{ code, message }`; sin red el código es
   `NETWORK_ERROR`. Los textos en español están en `shared/api/error-messages.ts`.
@@ -184,3 +185,28 @@ En el modo conductor, el panel "Descargar mapa para usar sin señal" guarda en
 
 La lógica (URLs, manifiesto, tema, permisos y estados de la descarga) es TypeScript puro con
 pruebas en Vitest; los adaptadores de Expo están en `src/features/map/native/`.
+
+## Estimado del pasajero (HU-404)
+
+En el modo pasajero (`src/features/fare-estimate/`):
+
+- **Destino:** se toca el mapa (pin rojo + "Confirmar destino") o se elige en "Lugares
+  frecuentes": los puntos clave de `@panter/map-style` (aeropuerto, parque y sitios turísticos) y
+  los centros de Mocoa y Puerto Asís de `PLACES`, con búsqueda local sin tildes. No se usan
+  geocodificadores externos. Los lugares con coordenada estimada dicen "ubicación aproximada".
+- **Origen:** la ubicación actual (dentro del área de servicio); el pin verde se arrastra para
+  cambiarlo. Sin GPS, el origen es el parque principal hasta que se mueva el pin.
+- **Vehículo:** mototaxi o taxi; el 4x4 aparece como "Próximamente".
+- `POST /fares/estimate` (con sesión): se dibuja la ruta (`decodePolyline`) y se muestran
+  distancia, tiempo, total en COP (`$ 19.500`) y el desglose con los labels de la API, en el
+  orden del cálculo (base, distancia, tiempo, mínima, nocturno, aeropuerto o periferia, redondeo).
+- **Vigencia:** cuenta regresiva hasta `validUntil`. Al vencer se renueva sola una vez y avisa
+  "Precio actualizado" (con el total anterior si cambió); la siguiente vez pide tocar "Actualizar
+  precio", para no gastar consultas de rutas con la pantalla abierta.
+- **Errores** en español, sin precios simulados: `OUT_OF_SERVICE_AREA` y `ROUTE_NOT_FOUND` piden
+  otro punto, `FARE_RULE_NOT_FOUND` sugiere otro vehículo y `ROUTING_UNAVAILABLE` (hoy en staging,
+  sin `ORS_API_KEY`) y la falta de red muestran "Reintentar".
+- "Pedir viaje" queda deshabilitado con la leyenda "Disponible pronto" (los viajes llegan en M4).
+
+El flujo es un reducer puro (`estimate/planner.ts`) con pruebas de selección, desglose, formato,
+vencimiento y errores.
