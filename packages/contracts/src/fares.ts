@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { VehicleTypeSchema } from './enums';
+import { VehicleTypeSchema, type VehicleType } from './enums';
 import { LatLngSchema, PolygonRingsSchema } from './geo';
 
 /**
@@ -43,7 +43,7 @@ export const FareRuleSchema = z.object({
 });
 export type FareRule = z.infer<typeof FareRuleSchema>;
 
-/** PUT /admin/fares/:vehicleType */
+/** PUT /admin/fares/rules/:vehicleType (FareRoutes.ADMIN_RULE) */
 export const FareRuleUpdateBodySchema = FareRuleSchema.omit({
   vehicleType: true,
   updatedAt: true,
@@ -71,6 +71,16 @@ export const GeofenceSchema = z.object({
 });
 export type Geofence = z.infer<typeof GeofenceSchema>;
 
+/**
+ * PUT /admin/fares/geofences/:id (HU-401, para HU-403): reemplaza nombre, recargo, tipos de
+ * vehículo y estado. `polygon` es opcional: si no viene, se conserva el actual (la web lo
+ * editará con el mapa en HU-304). El tipo (`kind`) no se edita.
+ */
+export const GeofenceUpdateBodySchema = GeofenceSchema.omit({ id: true, kind: true }).extend({
+  polygon: PolygonRingsSchema.optional(),
+});
+export type GeofenceUpdateBody = z.infer<typeof GeofenceUpdateBodySchema>;
+
 export const FareConfigResponseSchema = z.object({
   rules: z.array(FareRuleSchema),
   geofences: z.array(GeofenceSchema),
@@ -88,10 +98,18 @@ export const FareChangeSchema = z.object({
 });
 export type FareChange = z.infer<typeof FareChangeSchema>;
 
+/** GET /admin/fares/history: del cambio más reciente al más antiguo, con cursor opaco. */
+export const FareHistoryQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type FareHistoryQuery = z.infer<typeof FareHistoryQuerySchema>;
+
 export const FareHistoryResponseSchema = z.object({
   items: z.array(FareChangeSchema),
   nextCursor: z.string().nullable(),
 });
+export type FareHistoryResponse = z.infer<typeof FareHistoryResponseSchema>;
 
 // POST /fares/estimate
 export const FareEstimateBodySchema = z.object({
@@ -153,6 +171,10 @@ export const FareRoutes = {
   ADMIN_GEOFENCE: '/admin/fares/geofences/:id',
   ADMIN_HISTORY: '/admin/fares/history',
 } as const;
+
+export const fareRulePath = (vehicleType: VehicleType) =>
+  `/admin/fares/rules/${encodeURIComponent(vehicleType)}`;
+export const fareGeofencePath = (id: string) => `/admin/fares/geofences/${encodeURIComponent(id)}`;
 
 /** Vigencia del estimado (coincide con la caché de rutas, §6.2). */
 export const FARE_ESTIMATE_TTL_SECONDS = 10 * 60;

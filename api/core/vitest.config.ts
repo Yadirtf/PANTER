@@ -35,6 +35,7 @@ export default defineConfig({
         'src/modules/drivers/**': CRITICAL,
         // M2 · HU-305, HU-401, HU-402: rutas y tarifas.
         'src/modules/routing/**': M2_CRITICAL,
+        'src/modules/pricing/**': M2_CRITICAL,
       },
     },
     projects: [
