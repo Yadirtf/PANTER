@@ -115,5 +115,31 @@ export default tseslint.config(
       ],
     },
   },
+  // packages/map-style (HU-302): estilo del mapa compartido por web y app, sin React ni DOM.
+  {
+    files: ['packages/map-style/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                ...INFRA_LIBS,
+                'react',
+                'react-*',
+                'next',
+                'next/*',
+                'expo*',
+                'maplibre-gl',
+                '@maplibre/maplibre-react-native',
+              ],
+              message: 'map-style es TypeScript puro: los componentes de mapa viven en web y app.',
+            },
+          ],
+        },
+      ],
+    },
+  },
   prettier,
 );

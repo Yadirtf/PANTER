@@ -4,3 +4,4 @@ packages:
   - web
   - app
   - packages/contracts
+  - packages/map-style
