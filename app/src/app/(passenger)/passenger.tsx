@@ -4,18 +4,17 @@ import { StyleSheet, Text, View } from 'react-native';
 import { ModeSwitcher } from '../../features/auth/screens/mode-switcher';
 import { SignOutButton } from '../../features/auth/screens/sign-out-button';
 import { useSession } from '../../features/auth/session/session-context';
-import { MapHomeLayout } from '../../features/map/components/map-home-layout';
-import { PanterMap } from '../../features/map/components/panter-map';
+import { TripPlanner } from '../../features/fare-estimate/components/trip-planner';
 import { Button, colors } from '../../shared/ui/form';
 
-// Inicio provisional del pasajero: mapa (HU-303). El destino y el estimado llegan en HU-404.
+// Inicio provisional del pasajero: mapa (HU-303) con destino y estimado (HU-404). Pedir el
+// viaje llega en M4.
 export default function PassengerHomeScreen() {
   const { user } = useSession();
   const router = useRouter();
   const isDriver = user?.roles.includes(Role.DRIVER) ?? false;
   return (
-    <MapHomeLayout
-      renderMap={(bottomInset) => <PanterMap mode="passenger" bottomInset={bottomInset} />}
+    <TripPlanner
       top={
         <>
           <ModeSwitcher />
