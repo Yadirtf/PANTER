@@ -6,7 +6,9 @@ import { buildGetHealth } from './composition/health';
 import { buildRoutingFactories } from './composition/routing';
 import { routingRoutes, type RoutingFactories } from './modules/routing/http/routes';
 // M2 · HU-401 (tarifas y geocercas)
-import { buildPricingAdminFactories } from './composition/pricing';
+// M2 · HU-402 (estimado)
+import { buildPricingAdminFactories, buildPricingFactories } from './composition/pricing';
+import { pricingRoutes, type PricingFactories } from './modules/pricing/http/routes';
 import {
   pricingAdminRoutes,
   type PricingAdminFactories,
@@ -29,6 +31,8 @@ export interface AppDeps {
   routing: RoutingFactories;
   /** M2 · HU-401 */
   pricingAdmin: PricingAdminFactories;
+  /** M2 · HU-402 */
+  pricing: PricingFactories;
 }
 
 /**
@@ -42,6 +46,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     consent: overrides.consent ?? buildConsentFactories(),
     routing: overrides.routing ?? buildRoutingFactories(),
     pricingAdmin: overrides.pricingAdmin ?? buildPricingAdminFactories(),
+    pricing: overrides.pricing ?? buildPricingFactories(),
   };
   const app = createRouter();
 
@@ -58,6 +63,8 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   app.route('/', routingRoutes(deps.routing, requireAuth));
   // M2 · HU-401: /admin/fares
   app.route('/', pricingAdminRoutes(deps.pricingAdmin, requireAuth));
+  // M2 · HU-402: POST /fares/estimate
+  app.route('/', pricingRoutes(deps.pricing, requireAuth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
   // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).

@@ -78,3 +78,32 @@ export interface FareChangesPage {
 export interface FareChangeRepository {
   list(input: { limit: number; after?: HistoryCursor }): Promise<FareChangesPage>;
 }
+
+// --- Estimación (HU-402) ---
+
+/**
+ * Puerto: reglas y geocercas para el estimado. La implementación guarda en memoria del isolate
+ * durante 60 s y se invalida al editar desde la administración.
+ */
+export interface FareCatalog {
+  rule(vehicleType: VehicleType): Promise<FareRule | null>;
+  covering(input: {
+    origin: LatLng;
+    destination: LatLng;
+    vehicleType: VehicleType;
+  }): Promise<GeofenceHit[]>;
+}
+
+/** Ruta resumida para el estimado (la misma caché de GET /routes, HU-305). */
+export interface EstimateRoute {
+  distanceMeters: number;
+  durationSeconds: number;
+  polyline: string;
+}
+
+/** Puerto: ruta por carretera entre origen y destino para quien consulta. */
+export type RouteSource = (input: {
+  userId: string;
+  origin: LatLng;
+  destination: LatLng;
+}) => Promise<EstimateRoute>;

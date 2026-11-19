@@ -33,6 +33,8 @@ export default defineConfig({
         // M2 · HU-305, HU-401, HU-402: rutas y tarifas.
         'src/modules/routing/**': M2_CRITICAL,
         'src/modules/pricing/**': M2_CRITICAL,
+        // HU-402: el cálculo de la tarifa es una función pura de dominio con cobertura ≥ 95 %.
+        'src/modules/pricing/domain/**': { statements: 95, branches: 95, functions: 95, lines: 95 },
       },
     },
     projects: [
@@ -63,7 +65,14 @@ export default defineConfig({
             },
           }),
         ],
-        test: { name: 'workers', include: ['test/**/*.test.ts'], exclude: ['test/unit/**'] },
+        test: {
+          name: 'workers',
+          include: ['test/**/*.test.ts'],
+          exclude: ['test/unit/**'],
+          // M2: la primera petición de cada archivo carga el Worker entero (~2,5 s con la
+          // cobertura); con todos los módulos de M2 se acercaba a los 5 s por defecto.
+          testTimeout: 15_000,
+        },
       },
     ],
   },
