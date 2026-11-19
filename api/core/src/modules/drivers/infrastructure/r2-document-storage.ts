@@ -16,5 +16,14 @@ export function createR2DocumentStorage(bucket: R2Bucket): DocumentStorage {
     async delete(key) {
       await bucket.delete(key);
     },
+    async get(key) {
+      const object = await bucket.get(key);
+      if (!object) return null;
+      return {
+        body: object.body,
+        contentType: object.httpMetadata?.contentType ?? 'application/octet-stream',
+        size: object.size,
+      };
+    },
   };
 }

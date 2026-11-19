@@ -9,11 +9,15 @@ import type {
   CreateProfileResult,
   DocumentStorage,
   DriverRepository,
+  DriverReviewRepository,
+  ListDriversInput,
   NewDocumentInput,
+  StatusChangeInput,
   ResubmitResult,
   UploadUseLedger,
 } from '../../src/modules/drivers/application/ports';
 import type {
+  AdminDriverRecord,
   DriverDocumentRecord,
   DriverProfileRecord,
   Vehicle,
@@ -136,6 +140,21 @@ export class MemoryDocumentStorage implements DocumentStorage {
     this.objects.delete(key);
     this.deleted.push(key);
   }
+  async get(key: string) {
+    const o = this.objects.get(key);
+    if (!o) return null;
+    const bytes = o.bytes;
+    return {
+      body: new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(bytes);
+          c.close();
+        },
+      }),
+      contentType: o.meta.contentType,
+      size: bytes.byteLength,
+    };
+  }
 }
 
 export class MemoryUploadLedger implements UploadUseLedger {
@@ -166,4 +185,170 @@ export function streamOf(...chunks: Uint8Array[]): ReadableStream<Uint8Array> {
       controller.close();
     },
   });
+}
+
+interface Account {
+  email: string;
+  fullName: string | null;
+  phone: string | null;
+  admin: boolean;
+  active: boolean;
+  roles: string[];
+}
+
+/**
+ * Doble del puerto DriverReviewRepository sobre los datos de un MemoryDriverRepository. Imita
+ * la sentencia única: actor ADMIN activo, estado de origen permitido y, al aprobar, los cinco
+ * documentos APPROVED; otorga DRIVER y audita solo si no lo tenía.
+ */
+export class MemoryDriverReviewRepository implements DriverReviewRepository {
+  readonly accounts = new Map<string, Account>();
+  readonly audit: { actorId: string; userId: string; role: string }[] = [];
+
+  constructor(readonly drivers: MemoryDriverRepository) {}
+
+  account(id: string, email: string, over: Partial<Account> = {}) {
+    const acc: Account = {
+      email,
+      fullName: null,
+      phone: null,
+      admin: false,
+      active: true,
+      roles: ['PASSENGER'],
+      ...over,
+    };
+    this.accounts.set(id, acc);
+    return acc;
+  }
+
+  private record(id: string): AdminDriverRecord | null {
+    const profile = this.drivers.profiles.get(id);
+    if (!profile) return null;
+    const acc = this.accounts.get(id);
+    return {
+      profile: structuredClone(profile),
+      documents: [...this.drivers.documents.values()]
+        .filter((d) => d.userId === id)
+        .map((d) => ({ ...d })),
+      email: acc?.email ?? `${id}@panter.test`,
+      fullName: acc?.fullName ?? null,
+      phone: acc?.phone ?? null,
+      reviewedByEmail: profile.reviewedBy
+        ? (this.accounts.get(profile.reviewedBy)?.email ?? null)
+        : null,
+    };
+  }
+
+  async list({ status, limit, after }: ListDriversInput) {
+    const micros = (iso: string) => iso.replace('Z', '000Z');
+    const sorted = [...this.drivers.profiles.values()]
+      .filter((p) => !status || p.verificationStatus === status)
+      .sort((a, b) => a.appliedAt.localeCompare(b.appliedAt) || a.userId.localeCompare(b.userId))
+      .filter(
+        (p) =>
+          !after ||
+          micros(p.appliedAt) > after.appliedAt ||
+          (micros(p.appliedAt) === after.appliedAt && p.userId > after.userId),
+      );
+    const page = sorted.slice(0, limit);
+    const last = page.at(-1);
+    return {
+      items: page.map((p) => this.record(p.userId)!),
+      next:
+        sorted.length > limit && last
+          ? { appliedAt: micros(last.appliedAt), userId: last.userId }
+          : null,
+    };
+  }
+
+  async find(id: string) {
+    return this.record(id);
+  }
+
+  private actorOk(actorId: string) {
+    const a = this.accounts.get(actorId);
+    return !!a && a.admin && a.active;
+  }
+
+  async reviewDocument(input: Parameters<DriverReviewRepository['reviewDocument']>[0]) {
+    const actorIsAdmin = this.actorOk(input.actorId);
+    const p = this.drivers.profiles.get(input.userId);
+    const doc = this.drivers.documents.get(`${input.userId}:${input.type}`);
+    let changed = false;
+    if (actorIsAdmin && p && doc && input.profileFrom.includes(p.verificationStatus)) {
+      Object.assign(doc, {
+        status: input.status,
+        rejectionReason: input.reason,
+        reviewedAt: this.drivers.now(),
+        reviewedBy: input.actorId,
+      });
+      changed = true;
+    }
+    return { actorIsAdmin, changed };
+  }
+
+  async approve(input: Parameters<DriverReviewRepository['approve']>[0]) {
+    const actorIsAdmin = this.actorOk(input.actorId);
+    const p = this.drivers.profiles.get(input.userId);
+    const approved = [...this.drivers.documents.values()].filter(
+      (d) => d.userId === input.userId && d.status === 'APPROVED',
+    ).length;
+    let changed = false;
+    if (actorIsAdmin && p && input.from.includes(p.verificationStatus) && approved === 5) {
+      Object.assign(p, {
+        verificationStatus: 'APPROVED',
+        rejectionReason: null,
+        reviewedAt: this.drivers.now(),
+        reviewedBy: input.actorId,
+      });
+      const acc = this.accounts.get(input.userId);
+      if (acc && !acc.roles.includes('DRIVER')) {
+        acc.roles.push('DRIVER');
+        this.audit.push({ actorId: input.actorId, userId: input.userId, role: 'DRIVER' });
+      }
+      changed = true;
+    }
+    return { actorIsAdmin, changed };
+  }
+
+  async changeStatus(input: StatusChangeInput) {
+    const actorIsAdmin = this.actorOk(input.actorId);
+    const p = this.drivers.profiles.get(input.userId);
+    let changed = false;
+    if (actorIsAdmin && p && input.from.includes(p.verificationStatus)) {
+      Object.assign(p, {
+        verificationStatus: input.to,
+        rejectionReason: input.reason,
+        reviewedAt: this.drivers.now(),
+        reviewedBy: input.actorId,
+        ...(input.setOffline ? { availability: 'OFFLINE' } : {}),
+      });
+      changed = true;
+    }
+    return { actorIsAdmin, changed };
+  }
+}
+
+/** Documento sembrado en un estado dado. */
+export function seedDocument(
+  repo: MemoryDriverRepository,
+  id: string,
+  type: DriverDocumentRecord['type'],
+  status: DriverDocumentRecord['status'] = 'SUBMITTED',
+  r2Key = `drivers/${id}/${type}/11111111-2222-4333-8444-555555555555`,
+) {
+  const doc: DriverDocumentRecord = {
+    userId: id,
+    type,
+    r2Key,
+    contentType: 'image/jpeg',
+    sizeBytes: 12,
+    status,
+    rejectionReason: status === 'REJECTED' ? 'La foto está borrosa' : null,
+    uploadedAt: repo.now(),
+    reviewedAt: null,
+    reviewedBy: null,
+  };
+  repo.documents.set(`${id}:${type}`, doc);
+  return doc;
 }

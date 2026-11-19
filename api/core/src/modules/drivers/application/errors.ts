@@ -1,4 +1,4 @@
-import { ApiErrorCode } from '@panter/contracts';
+import { ApiErrorCode, DOCUMENT_LABELS, type DocumentType } from '@panter/contracts';
 import { AppError } from '../../../shared/errors/app-error';
 
 /** Errores del onboarding de conductores (E2), con mensajes para usuarios de Villagarzón. */
@@ -42,6 +42,50 @@ export const DriverErrors = {
     ),
   uploadUrlInvalid: (reason: 'invalid' | 'expired' | 'used') =>
     new AppError(ApiErrorCode.UPLOAD_URL_INVALID, UPLOAD_URL_MESSAGES[reason], { status: 403 }),
+  // --- Revisión por ADMIN (HU-204) ---
+  viewUrlInvalid: () =>
+    new AppError(
+      ApiErrorCode.UPLOAD_URL_INVALID,
+      'El enlace del documento no es válido o venció. Ábrelo de nuevo desde el panel.',
+      { status: 403 },
+    ),
+  documentNotFound: (type: DocumentType) =>
+    AppError.notFound(`El solicitante aún no ha subido: ${DOCUMENT_LABELS[type]}.`),
+  driverNotFound: () => AppError.notFound('No encontramos esa solicitud de conductor.'),
+  documentsIncomplete: (pending: DocumentType[]) =>
+    new AppError(
+      ApiErrorCode.DOCUMENTS_INCOMPLETE,
+      `Para aprobar, los cinco documentos deben estar aprobados. Faltan: ${pending
+        .map((t) => DOCUMENT_LABELS[t])
+        .join(', ')}.`,
+      { status: 409, details: { pending } },
+    ),
+  invalidTransition: (from: string, action: string) =>
+    new AppError(
+      ApiErrorCode.INVALID_DRIVER_TRANSITION,
+      `No se puede ${ACTION_LABELS[action] ?? action} una solicitud ${STATUS_LABELS[from] ?? from}.`,
+      { status: 409, details: { from, action } },
+    ),
+  forbidden: () =>
+    new AppError(ApiErrorCode.FORBIDDEN, 'No tienes permiso para realizar esta acción.', {
+      status: 403,
+    }),
+  invalidCursor: () => AppError.validation('El cursor de paginación no es válido.'),
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  approve: 'aprobar',
+  reject: 'rechazar',
+  suspend: 'suspender',
+  reinstate: 'reactivar',
+  review: 'revisar los documentos de',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: 'pendiente',
+  APPROVED: 'aprobada',
+  REJECTED: 'rechazada',
+  SUSPENDED: 'suspendida',
 };
 
 const UPLOAD_URL_MESSAGES = {

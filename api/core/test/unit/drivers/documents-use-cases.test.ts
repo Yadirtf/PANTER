@@ -204,7 +204,7 @@ describe('PUT firmado (HU-202)', () => {
     const bytes = IMAGES['image/jpeg']();
     const flipped = signature.slice(0, -2) + (signature.endsWith('AA') ? 'BB' : 'AA');
     // Cambiar el tamaño máximo (o cualquier campo) invalida la firma.
-    const grant = decodeGrant(payload)!;
+    const grant = decodeGrant(payload) as UploadGrant;
     const bigger = encodeGrant({ ...grant, maxBytes: DOCUMENT_MAX_BYTES });
     for (const bad of [
       `${payload}.${flipped}`,
@@ -370,7 +370,7 @@ describe('dominio de documentos', () => {
     };
     expect(decodeGrant(encodeGrant(grant))).toEqual(grant);
     const bad: Partial<Record<keyof UploadGrant, unknown>>[] = [
-      { purpose: 'view' },
+      { purpose: 'download' },
       { userId: 'no-uuid' },
       { type: 'PASAPORTE' },
       { contentType: 'image/gif' },

@@ -13,7 +13,8 @@ import {
   canUseDriverMode,
   DriverAction,
   nextStatus,
-  requiredStatusFor,
+  allowedFrom,
+  canReviewDocuments,
 } from '../../../src/modules/drivers/domain/driver-status';
 import { isUniqueViolation } from '../../../src/modules/drivers/infrastructure/pg-errors';
 import { sampleVehicle, userId } from '../../support/driver-fakes';
@@ -33,7 +34,7 @@ describe('máquina de estados del conductor (tabla completa)', () => {
     [APPROVED, 'suspend', SUSPENDED],
     [APPROVED, 'reinstate', null],
     [APPROVED, 'resubmit', null],
-    [REJECTED, 'approve', null],
+    [REJECTED, 'approve', APPROVED],
     [REJECTED, 'reject', null],
     [REJECTED, 'suspend', null],
     [REJECTED, 'reinstate', null],
@@ -53,7 +54,7 @@ describe('máquina de estados del conductor (tabla completa)', () => {
 
   it.each(table)('%s + %s → %s', (from, action, to) => {
     expect(nextStatus(from, action)).toBe(to);
-    if (to) expect(requiredStatusFor(action)).toBe(from);
+    expect(allowedFrom(action).includes(from)).toBe(to !== null);
   });
 
   it.each([
@@ -63,6 +64,7 @@ describe('máquina de estados del conductor (tabla completa)', () => {
     [SUSPENDED, false, false],
   ] as const)('%s: edita documentos=%s, modo conductor=%s', (status, edit, drive) => {
     expect(canEditDocuments(status)).toBe(edit);
+    expect(canReviewDocuments(status)).toBe(edit);
     expect(canUseDriverMode(status)).toBe(drive);
   });
 

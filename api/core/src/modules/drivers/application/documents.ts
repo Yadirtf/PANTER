@@ -14,6 +14,7 @@ import {
   encodeGrant,
   isExpired,
   splitToken,
+  type DocumentUrlGrant,
   type UploadGrant,
 } from '../domain/document-url';
 import { toDriverDocument, type DocumentContentType } from '../domain/driver-profile';
@@ -110,20 +111,35 @@ export interface UploadInput {
 /** PUT de la URL firmada. */
 export type UploadDocument = (input: UploadInput) => Promise<DriverDocument>;
 
-/** Verifica firma (tiempo constante) y vencimiento. */
-export async function verifyGrant(
+/**
+ * Verifica firma (tiempo constante), formato, propósito y vencimiento de un token de URL de
+ * documento. Una URL de lectura no sirve para subir, ni al revés.
+ */
+export async function verifyGrant<P extends DocumentUrlGrant['purpose']>(
+  signer: DocumentUrlSigner,
+  token: string | undefined,
+  nowMs: number,
+  purpose: P,
+): Promise<Extract<DocumentUrlGrant, { purpose: P }> | null> {
+  const parts = token ? splitToken(token) : null;
+  if (!parts || !(await signer.verify(parts.payload, parts.signature))) return null;
+  const grant = decodeGrant(parts.payload);
+  if (!grant || grant.purpose !== purpose) return null;
+  if (isExpired(grant, nowMs)) return null;
+  return grant as Extract<DocumentUrlGrant, { purpose: P }>;
+}
+
+/** Como `verifyGrant` para subir, distinguiendo el vencimiento en el mensaje. */
+async function verifyUploadGrant(
   signer: DocumentUrlSigner,
   token: string | undefined,
   nowMs: number,
 ): Promise<UploadGrant> {
-  const parts = token ? splitToken(token) : null;
-  if (!parts || !(await signer.verify(parts.payload, parts.signature))) {
-    throw DriverErrors.uploadUrlInvalid('invalid');
-  }
-  const grant = decodeGrant(parts.payload);
-  if (!grant) throw DriverErrors.uploadUrlInvalid('invalid');
-  if (isExpired(grant, nowMs)) throw DriverErrors.uploadUrlInvalid('expired');
-  return grant;
+  const grant = await verifyGrant(signer, token, nowMs, 'upload');
+  if (grant) return grant;
+  // ¿Firma y datos válidos pero vencida? Mensaje propio para que la app pida otra URL.
+  const late = await verifyGrant(signer, token, 0, 'upload');
+  throw DriverErrors.uploadUrlInvalid(late ? 'expired' : 'invalid');
 }
 
 /**
@@ -147,7 +163,7 @@ export function makeUploadDocument(deps: {
 }): UploadDocument {
   const now = deps.clock ?? Date.now;
   return async ({ token, contentType, contentLength, body }) => {
-    const grant = await verifyGrant(deps.signer, token, now());
+    const grant = await verifyUploadGrant(deps.signer, token, now());
     if (await deps.ledger.isUsed(grant.key)) throw DriverErrors.uploadUrlInvalid('used');
     if (baseContentType(contentType) !== grant.contentType) {
       throw DriverErrors.documentTypeNotAllowed();

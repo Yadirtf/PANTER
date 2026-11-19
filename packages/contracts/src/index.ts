@@ -10,3 +10,4 @@ export * from './places';
 export * from './drivers';
 export * from './fares';
 export * from './routes';
+export * from './events';
