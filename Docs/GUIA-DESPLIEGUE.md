@@ -409,7 +409,8 @@ propiedad, SOAT y tecnomecánica) al bucket R2 **privado** `panter-documents-sta
 existe (paso 3). No se crea nada nuevo en R2: el bucket **no** debe tener acceso público ni
 dominio propio (R2 → `panter-documents-staging` → **Settings** → **Public access**: deshabilitado).
 La app nunca habla con R2: la API entrega una URL firmada **del propio Worker**, válida 10
-minutos y una sola vez, y el Worker escribe en R2.
+minutos y una sola vez, y el Worker escribe en R2. Los administradores (HU-204) ven los
+documentos con otra URL firmada que dura 5 minutos y no se guarda en caché.
 
 | Nombre                | Tipo    | Dónde se carga                       | Para qué                                     |
 | --------------------- | ------- | ------------------------------------ | -------------------------------------------- |
@@ -426,11 +427,15 @@ minutos y una sola vez, y el Worker escribe en R2.
 
 Si falta, solo fallan las rutas de documentos (`500 INTERNAL_ERROR`; el log del Worker dice
 "Falta configurar el secreto DOCUMENT_URL_SECRET…"); `/health`, el login y la solicitud de
-conductor siguen funcionando. Si lo cambias, las URLs de subida emitidas en los
+conductor siguen funcionando. Si lo cambias, las URLs de subida o lectura emitidas en los
 últimos minutos dejan de servir y la app pide una nueva; los archivos ya subidos no se afectan.
 
 Límites (de `@panter/contracts`): JPG, PNG o WEBP de hasta 8 MB; la API comprueba el tipo real
 del archivo (sus primeros bytes), no solo lo que declara el teléfono.
+
+Al aprobar un conductor (HU-204) la API publica el evento `DriverApproved` en la cola
+`panter-events-staging` (ya creada en el paso 3). Si la cola falla, la aprobación se mantiene y
+el log del Worker registra `driver_approved_publish_failed` con el evento completo.
 
 ## M2 · Rutas con OpenRouteService
 

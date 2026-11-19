@@ -1,5 +1,6 @@
 import {
   DocumentStatus,
+  type AdminDriver,
   REQUIRED_DOCUMENTS,
   type DOCUMENT_CONTENT_TYPES,
   type DocumentType,
@@ -111,5 +112,26 @@ export function toDriverProfile(
     reviewedAt: profile.reviewedAt,
     documents: sortDocuments(docs).map(toDriverDocument),
     missingDocuments: missingDocuments(docs),
+  };
+}
+
+/** Solicitud vista por un ADMIN (HU-204): perfil, documentos y datos de la cuenta. */
+export interface AdminDriverRecord {
+  profile: DriverProfileRecord;
+  documents: DriverDocumentRecord[];
+  email: string;
+  fullName: string | null;
+  phone: string | null;
+  /** Correo del ADMIN que tomó la última decisión (null si nadie o si su cuenta se borró). */
+  reviewedByEmail: string | null;
+}
+
+export function toAdminDriver(record: AdminDriverRecord): AdminDriver {
+  return {
+    ...toDriverProfile(record.profile, record.documents),
+    email: record.email,
+    fullName: record.fullName,
+    phone: record.phone,
+    reviewedBy: record.reviewedByEmail,
   };
 }

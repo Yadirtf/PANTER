@@ -8,9 +8,11 @@ import { DriverVerificationStatus } from '@panter/contracts';
  *   (solicitud) ─▶ PENDING ──approve──▶ APPROVED ──suspend──▶ SUSPENDED
  *                    │  ▲                   ▲                     │
  *                 reject resubmit           └──────reinstate──────┘
- *                    ▼  │
- *                  REJECTED
+ *                    ▼  │                   │
+ *                  REJECTED ───approve──────┘
  *
+ * - `approve` también desde REJECTED (HU-204): el solicitante corrigió los documentos, el
+ *   ADMIN los aprobó todos y no hace falta que reenvíe la solicitud (así lo ofrece la web).
  * - `resubmit` lo hace el solicitante (POST /drivers/apply tras un rechazo).
  * - `approve`, `reject`, `suspend` y `reinstate` los hace un ADMIN.
  * - Un rechazado no se suspende ni un aprobado se rechaza: para retirar a un conductor
@@ -29,17 +31,17 @@ const { PENDING, APPROVED, REJECTED, SUSPENDED } = DriverVerificationStatus;
 
 const TRANSITIONS: Record<
   DriverAction,
-  { from: DriverVerificationStatus; to: DriverVerificationStatus }
+  { from: readonly DriverVerificationStatus[]; to: DriverVerificationStatus }
 > = {
-  resubmit: { from: REJECTED, to: PENDING },
-  approve: { from: PENDING, to: APPROVED },
-  reject: { from: PENDING, to: REJECTED },
-  suspend: { from: APPROVED, to: SUSPENDED },
-  reinstate: { from: SUSPENDED, to: APPROVED },
+  resubmit: { from: [REJECTED], to: PENDING },
+  approve: { from: [PENDING, REJECTED], to: APPROVED },
+  reject: { from: [PENDING], to: REJECTED },
+  suspend: { from: [APPROVED], to: SUSPENDED },
+  reinstate: { from: [SUSPENDED], to: APPROVED },
 };
 
-/** Estado de origen exigido por la acción. */
-export function requiredStatusFor(action: DriverAction): DriverVerificationStatus {
+/** Estados de origen desde los que se permite la acción (condición del UPDATE). */
+export function allowedFrom(action: DriverAction): readonly DriverVerificationStatus[] {
   return TRANSITIONS[action].from;
 }
 
@@ -49,7 +51,14 @@ export function nextStatus(
   action: DriverAction,
 ): DriverVerificationStatus | null {
   const rule = TRANSITIONS[action];
-  return rule.from === from ? rule.to : null;
+  return rule.from.includes(from) ? rule.to : null;
+}
+
+/** Un ADMIN revisa documentos mientras la solicitud no está decidida a favor. */
+export const REVIEWABLE_STATUSES: readonly DriverVerificationStatus[] = [PENDING, REJECTED];
+
+export function canReviewDocuments(status: DriverVerificationStatus): boolean {
+  return REVIEWABLE_STATUSES.includes(status);
 }
 
 /** El solicitante solo cambia documentos mientras su solicitud no está decidida a favor. */

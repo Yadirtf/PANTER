@@ -23,7 +23,20 @@ export interface UploadGrant {
   exp: number;
 }
 
-export type DocumentUrlGrant = UploadGrant;
+/**
+ * Datos firmados de una URL de lectura (HU-204, solo la emite un ADMIN). Vida corta y sin caché:
+ * quien tenga el enlace puede ver la imagen hasta que venza.
+ */
+export interface ViewGrant {
+  purpose: 'view';
+  userId: string;
+  type: DocumentTypeValue;
+  contentType: DocumentContentType;
+  key: string;
+  exp: number;
+}
+
+export type DocumentUrlGrant = UploadGrant | ViewGrant;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -51,7 +64,7 @@ export function encodeGrant(grant: DocumentUrlGrant): string {
       u: grant.userId,
       t: grant.type,
       ct: grant.contentType,
-      mb: grant.maxBytes,
+      ...(grant.purpose === 'upload' ? { mb: grant.maxBytes } : {}),
       k: grant.key,
       exp: grant.exp,
     }),
@@ -68,14 +81,15 @@ export function decodeGrant(encoded: string): DocumentUrlGrant | null {
   try {
     const raw = JSON.parse(fromBase64Url(encoded)) as Record<string, unknown>;
     const { p, u, t, ct, mb, k, exp } = raw;
-    if (p !== 'upload') return null;
     if (typeof u !== 'string' || !UUID.test(u) || !isType(t) || !isContentType(ct)) return null;
-    if (typeof mb !== 'number' || !Number.isInteger(mb) || mb <= 0 || mb > DOCUMENT_MAX_BYTES) {
-      return null;
-    }
     if (typeof exp !== 'number' || !Number.isInteger(exp)) return null;
     if (typeof k !== 'string' || !k.startsWith(`drivers/${u}/${t}/`)) return null;
     if (!UUID.test(k.slice(`drivers/${u}/${t}/`.length))) return null;
+    if (p === 'view') return { purpose: p, userId: u, type: t, contentType: ct, key: k, exp };
+    if (p !== 'upload') return null;
+    if (typeof mb !== 'number' || !Number.isInteger(mb) || mb <= 0 || mb > DOCUMENT_MAX_BYTES) {
+      return null;
+    }
     return { purpose: p, userId: u, type: t, contentType: ct, maxBytes: mb, key: k, exp };
   } catch {
     return null;

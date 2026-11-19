@@ -1,5 +1,5 @@
 import { DocumentStatus, DriverAvailability, DriverVerificationStatus } from '@panter/contracts';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { rowsOf } from '../../../shared/infrastructure/db/rows';
 import {
   driverDocuments,
@@ -17,7 +17,7 @@ import type {
   DriverProfileRecord,
   Vehicle,
 } from '../domain/driver-profile';
-import { canUseDriverMode, requiredStatusFor, DriverAction } from '../domain/driver-status';
+import { allowedFrom, canUseDriverMode, DriverAction } from '../domain/driver-status';
 import { isUniqueViolation } from './pg-errors';
 
 export const PLATE_CONSTRAINT = 'driver_profiles_plate_key';
@@ -139,7 +139,7 @@ export function createDrizzleDriverRepository(db: AnyPgDatabase): DriverAccountR
           .where(
             and(
               eq(driverProfiles.userId, userId),
-              eq(driverProfiles.verificationStatus, requiredStatusFor(DriverAction.RESUBMIT)),
+              inArray(driverProfiles.verificationStatus, [...allowedFrom(DriverAction.RESUBMIT)]),
             ),
           )
           .returning();
