@@ -66,6 +66,10 @@ export interface Env {
   JWT_PUBLIC_KEY?: string;
   /** Var: identificador de la llave (`kid` del header y del JWKS). Cambiarlo al rotar llaves. */
   JWT_KID?: string;
+
+  // --- M2 · HU-305 Rutas. Ver Docs/GUIA-DESPLIEGUE.md → "M2 · Rutas con OpenRouteService". ---
+  /** Secreto: API key de OpenRouteService. Sin ella, /routes y /fares/estimate responden 503. */
+  ORS_API_KEY?: string;
 }
 
 /** Tipo de contexto de Hono para toda la app. */
