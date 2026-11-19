@@ -10,6 +10,14 @@ import { buildTilesFactories } from './composition/tiles';
 // M2 · HU-305 (rutas)
 import { buildRoutingFactories } from './composition/routing';
 import { routingRoutes, type RoutingFactories } from './modules/routing/http/routes';
+// M2 · HU-401 (tarifas y geocercas)
+// M2 · HU-402 (estimado)
+import { buildPricingAdminFactories, buildPricingFactories } from './composition/pricing';
+import { pricingRoutes, type PricingFactories } from './modules/pricing/http/routes';
+import {
+  pricingAdminRoutes,
+  type PricingAdminFactories,
+} from './modules/pricing/http/admin-routes';
 import { adminRoutes, type AdminFactories } from './modules/admin/http/routes';
 import { consentRoutes, type ConsentFactories } from './modules/consent/http/routes';
 import { meRoutes } from './modules/auth/http/me-routes';
@@ -31,6 +39,10 @@ export interface AppDeps {
   drivers: DriverFactories;
   /** M2 · HU-305 */
   routing: RoutingFactories;
+  /** M2 · HU-401 */
+  pricingAdmin: PricingAdminFactories;
+  /** M2 · HU-402 */
+  pricing: PricingFactories;
 }
 
 /**
@@ -45,6 +57,8 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     tiles: overrides.tiles ?? buildTilesFactories(),
     drivers: overrides.drivers ?? buildDriverFactories(),
     routing: overrides.routing ?? buildRoutingFactories(),
+    pricingAdmin: overrides.pricingAdmin ?? buildPricingAdminFactories(),
+    pricing: overrides.pricing ?? buildPricingFactories(),
   };
   const app = createRouter();
 
@@ -64,6 +78,10 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   app.route('/', driverRoutes(deps.drivers, { requireAuth, requireConsent }));
   // M2 · HU-305: GET /routes
   app.route('/', routingRoutes(deps.routing, requireAuth));
+  // M2 · HU-401: /admin/fares
+  app.route('/', pricingAdminRoutes(deps.pricingAdmin, requireAuth));
+  // M2 · HU-402: POST /fares/estimate
+  app.route('/', pricingRoutes(deps.pricing, requireAuth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
   // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).
