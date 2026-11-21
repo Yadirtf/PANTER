@@ -58,6 +58,11 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   ROUTE_NOT_FOUND: 'No encontramos una ruta entre esos dos puntos.',
   ROUTING_UNAVAILABLE: 'No pudimos calcular la ruta en este momento. Intenta de nuevo.',
   FARE_RULE_NOT_FOUND: 'Ese tipo de vehículo no tiene tarifa configurada.',
+  // Catálogo geográfico
+  AREA_NAME_TAKEN: 'Ya existe un barrio o vereda con ese nombre.',
+  PLACE_SLUG_TAKEN: 'Ya existe un lugar con ese identificador.',
+  INVALID_POLYGON:
+    'El polígono no es válido: revisa que no se cruce y esté en la zona de servicio.',
 };
 
 /** Mensaje para mostrar al usuario a partir de un error normalizado `{ code }`. */

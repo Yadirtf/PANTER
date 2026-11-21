@@ -57,5 +57,9 @@ export const ApiErrorCode = {
   ROUTE_NOT_FOUND: 'ROUTE_NOT_FOUND',
   ROUTING_UNAVAILABLE: 'ROUTING_UNAVAILABLE',
   FARE_RULE_NOT_FOUND: 'FARE_RULE_NOT_FOUND',
+  // Catálogo geográfico (E15)
+  AREA_NAME_TAKEN: 'AREA_NAME_TAKEN',
+  PLACE_SLUG_TAKEN: 'PLACE_SLUG_TAKEN',
+  INVALID_POLYGON: 'INVALID_POLYGON',
 } as const;
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];

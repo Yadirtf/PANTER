@@ -3,7 +3,9 @@ import {
   DocumentType,
   DriverAvailability,
   DriverVerificationStatus,
+  AreaKind,
   GeofenceKind,
+  PlaceCategory,
   PricingModel,
   Role,
   VehicleType,
@@ -42,3 +44,7 @@ export const documentTypeEnum = pgEnum('document_type', enumValues(DocumentType)
 export const documentStatusEnum = pgEnum('document_status', enumValues(DocumentStatus));
 export const pricingModelEnum = pgEnum('pricing_model', enumValues(PricingModel));
 export const geofenceKindEnum = pgEnum('geofence_kind', enumValues(GeofenceKind));
+
+// --- E15: catálogo geográfico ---
+export const areaKindEnum = pgEnum('area_kind', enumValues(AreaKind));
+export const placeCategoryEnum = pgEnum('place_category', enumValues(PlaceCategory));

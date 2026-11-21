@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { VehicleTypeSchema, type VehicleType } from './enums';
 import { LatLngSchema, PolygonRingsSchema } from './geo';
+import { RouteQualitySchema } from './routes';
 
 /**
  * Motor de tarifas (E4: HU-401 a HU-404, RF-05). Valores en pesos colombianos (COP) enteros.
@@ -146,6 +147,8 @@ export const RouteSummarySchema = z.object({
   durationSeconds: z.number().nonnegative(),
   /** Polilínea codificada (precisión 5), decodificable con decodePolyline. */
   polyline: z.string(),
+  /** Ajuste a la vía y detección de ruta inusual (HU-307). */
+  quality: RouteQualitySchema.optional(),
 });
 export type RouteSummary = z.infer<typeof RouteSummarySchema>;
 
