@@ -2,7 +2,8 @@ import { isInServiceArea, pointInPolygon, type LatLng, type PolygonRings } from 
 import { MIN_RING_VERTICES, toEditable } from './polygon-edit';
 
 /**
- * Validación del polígono de una geocerca en el navegador (HU-304), antes de enviarlo. La API
+ * Validación de un polígono en el navegador (geocercas de HU-304, barrios y veredas de HU-309),
+ * antes de enviarlo. La API
  * repite las reglas y PostGIS comprueba `ST_IsValid`; aquí se avisa sin esperar la respuesta:
  * - cada anillo con al menos 3 vértices distintos y con área;
  * - todos los vértices dentro del área de servicio (SERVICE_AREA es una caja: si los vértices
@@ -204,4 +205,72 @@ export function polygonIssues(polygon: PolygonRings): PolygonIssue[] {
 
 export function isPolygonValid(polygon: PolygonRings): boolean {
   return polygonIssues(polygon).length === 0;
+}
+
+// --- Solapamiento entre polígonos (HU-309: advertencia, no bloquea) ---
+
+/** ¿Los segmentos se cruzan en un punto interior de ambos? (tocarse o compartir un tramo no cuenta) */
+function segmentsCrossProperly([p1, p2]: Segment, [q1, q2]: Segment): boolean {
+  const d1 = orient(q1, q2, p1);
+  const d2 = orient(q1, q2, p2);
+  const d3 = orient(p1, p2, q1);
+  const d4 = orient(p1, p2, q2);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+function onBoundary(point: LatLng, rings: readonly (readonly LatLng[])[]): boolean {
+  return rings.some((ring) => sides(ring).some(([a, b]) => onSegment(a, b, point)));
+}
+
+/** Dentro del polígono y no sobre su borde (dos barrios vecinos comparten el borde). */
+function strictlyInside(point: LatLng, rings: readonly (readonly LatLng[])[]): boolean {
+  return pointInPolygon(point, rings) && !onBoundary(point, rings);
+}
+
+function centroid(ring: readonly LatLng[]): LatLng {
+  const n = ring.length;
+  return {
+    lat: ring.reduce((sum, p) => sum + p.lat, 0) / n,
+    lng: ring.reduce((sum, p) => sum + p.lng, 0) / n,
+  };
+}
+
+/** Puntos del borde de A (vértices y mitades de los lados) y su centro si cae dentro de A. */
+function samplePoints(rings: readonly (readonly LatLng[])[]): LatLng[] {
+  const outer = rings[0] ?? [];
+  const points = rings.flatMap((ring) => [
+    ...ring,
+    ...sides(ring).map(([a, b]) => ({ lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 })),
+  ]);
+  if (outer.length >= MIN_RING_VERTICES) {
+    const center = centroid(outer);
+    if (strictlyInside(center, rings)) points.push(center);
+  }
+  return points;
+}
+
+/**
+ * ¿Se solapan los interiores de dos polígonos? Compartir un borde o un vértice (barrios
+ * vecinos) no es solapamiento. Respeta los huecos: un barrio dentro del hueco de otro no se
+ * solapa con él. Aproximación suficiente para una advertencia; PostGIS tiene la última palabra.
+ */
+export function polygonsOverlap(a: PolygonRings, b: PolygonRings): boolean {
+  const ra = toEditable(a).filter((ring) => ring.length >= MIN_RING_VERTICES);
+  const rb = toEditable(b).filter((ring) => ring.length >= MIN_RING_VERTICES);
+  if (ra.length === 0 || rb.length === 0) return false;
+  const sa = ra.flatMap(sides);
+  const sb = rb.flatMap(sides);
+  if (sa.some((x) => sb.some((y) => segmentsCrossProperly(x, y)))) return true;
+  return (
+    samplePoints(ra).some((p) => strictlyInside(p, rb)) ||
+    samplePoints(rb).some((p) => strictlyInside(p, ra))
+  );
+}
+
+/** Los polígonos de `others` que se solapan con `polygon`. */
+export function overlapping<T extends { polygon: PolygonRings }>(
+  polygon: PolygonRings,
+  others: readonly T[],
+): T[] {
+  return others.filter((other) => polygonsOverlap(polygon, other.polygon));
 }

@@ -11,7 +11,12 @@ import {
 } from '@panter/contracts';
 import { z } from 'zod';
 import { formatThousands } from '@/shared/lib/format';
-import { describePolygon, samePolygon, toPolygonPayload, type EditableRings } from './polygon-edit';
+import {
+  describePolygon,
+  samePolygon,
+  toPolygonPayload,
+  type EditableRings,
+} from '@/features/geo-editor/lib/polygon-edit';
 
 /** Edición de tarifas por ADMIN (HU-403): formularios, conversiones y validación. */
 
@@ -309,8 +314,5 @@ export function polygonSummary(geofence: { polygon: PolygonRings }): string {
   return describePolygon(geofence.polygon);
 }
 
-/** "1,02950; −76,61650" (lat; lng con 5 decimales y coma decimal). */
-export function formatLatLng(point: { lat: number; lng: number }): string {
-  const fmt = (n: number) => n.toFixed(5).replace('.', ',').replace('-', '−');
-  return `${fmt(point.lat)}; ${fmt(point.lng)}`;
-}
+/** "1,02950; −76,61650": el formato común del editor de polígonos. */
+export { formatLatLng } from '@/features/geo-editor/lib/polygon-map';

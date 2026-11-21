@@ -1,9 +1,10 @@
 import type { LatLng, PolygonRings } from '@panter/contracts';
 
 /**
- * Operaciones del editor de geocercas (HU-304). Los anillos se editan ABIERTOS (sin repetir el
- * primer vértice al final); al enviar se cierran. Anillo 0 = borde exterior; los demás son
- * huecos (p. ej. el casco urbano dentro de la zona periférica).
+ * Operaciones puras del editor de polígonos: geocercas de tarifas (HU-304) y barrios y veredas
+ * (HU-309). Los anillos se editan ABIERTOS (sin repetir el primer vértice al final); al enviar
+ * se cierran. Anillo 0 = borde exterior; los demás son huecos (p. ej. el casco urbano dentro de
+ * la zona periférica).
  */
 export type EditableRings = LatLng[][];
 
@@ -173,4 +174,40 @@ export function describePolygonChange(
   ].filter(Boolean);
   const detail = parts.length > 0 ? ` (${parts.join(', ')})` : '';
   return { before: describePolygon(before), after: `${describePolygon(after)}${detail}` };
+}
+
+// --- Dibujo de un polígono nuevo (HU-309) ---
+
+/**
+ * Polígono en dibujo: los vértices en el orden en que se hizo clic. Se cierra con un clic sobre
+ * el primer vértice (o con «Cerrar polígono») cuando tiene al menos 3; desde ahí se edita como
+ * cualquier otro polígono.
+ */
+export type DrawDraft = LatLng[];
+
+export const DRAW_TOO_FEW_MESSAGE = `Agrega al menos ${MIN_RING_VERTICES} vértices para cerrar el polígono.`;
+
+/** Agrega un vértice al final del dibujo (redondeado); un clic repetido en el mismo punto no cuenta. */
+export function addDrawVertex(draft: DrawDraft, point: LatLng): DrawDraft {
+  const p = { lat: roundCoord(point.lat), lng: roundCoord(point.lng) };
+  const last = draft[draft.length - 1];
+  if (last && same(last, p)) return draft;
+  return [...draft, p];
+}
+
+/** Quita el último vértice dibujado («Deshacer último punto»). */
+export function undoDrawVertex(draft: DrawDraft): DrawDraft {
+  return draft.slice(0, -1);
+}
+
+export function canCloseDrawing(draft: DrawDraft): boolean {
+  return new Set(draft.map((p) => `${p.lat},${p.lng}`)).size >= MIN_RING_VERTICES;
+}
+
+export type CloseResult = { ok: true; rings: EditableRings } | { ok: false; message: string };
+
+/** Cierra el dibujo: pasa a ser un polígono de un solo anillo, editable con el resto del editor. */
+export function closeDrawing(draft: DrawDraft): CloseResult {
+  if (!canCloseDrawing(draft)) return { ok: false, message: DRAW_TOO_FEW_MESSAGE };
+  return { ok: true, rings: [openRing(draft)] };
 }

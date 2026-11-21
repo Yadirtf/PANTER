@@ -1,7 +1,7 @@
 'use client';
 
 import type { LatLng } from '@panter/contracts';
-import { PLACES_LAYER } from '@panter/map-style';
+import { FONTS, PALETTES, PLACES_LAYER } from '@panter/map-style';
 import type {
   GeoJSONSource,
   Map as MaplibreMap,
@@ -12,39 +12,30 @@ import type {
 } from 'maplibre-gl';
 import { useEffect } from 'react';
 import { removeLayers, useLatest, usePanterMap } from '@/features/map/components/map-context';
+import type { DrawDraft, EditableRings, VertexRef } from '../lib/polygon-edit';
 import {
-  geofencesFeatureCollection,
+  draftFeatureCollection,
+  EMPTY_COLLECTION,
   midpointFeatureCollection,
+  shapesFeatureCollection,
   vertexFeatureCollection,
-  type ShownGeofence,
-} from '../lib/geofence-map';
-import type { EditableRings, VertexRef } from '../lib/polygon-edit';
+  type MapShape,
+} from '../lib/polygon-map';
 
-const SRC = {
-  geofences: 'panter-geofences',
-  vertices: 'panter-geofence-vertices',
-  midpoints: 'panter-geofence-midpoints',
-  test: 'panter-geofence-test-point',
-} as const;
-const LAYER = {
-  fill: 'panter-geofences-fill',
-  line: 'panter-geofences-line',
-  midpoints: 'panter-geofence-midpoints',
-  vertices: 'panter-geofence-vertices',
-  test: 'panter-geofence-test-point',
-} as const;
-
-const EMPTY = { type: 'FeatureCollection' as const, features: [] };
-
-export interface GeofenceEditing {
+/** Polígono que se está editando: anillos abiertos y vértice seleccionado. */
+export interface PolygonEditing {
   id: string;
   rings: EditableRings;
   selected: VertexRef | null;
 }
 
-export interface GeofenceLayersProps {
-  geofences: readonly ShownGeofence[];
-  editing: GeofenceEditing | null;
+export interface PolygonLayersProps {
+  /** Prefijo de las fuentes y capas (varias capas de polígonos en el mismo mapa). */
+  id?: string;
+  shapes: readonly MapShape[];
+  editing: PolygonEditing | null;
+  /** Nombre de cada figura como etiqueta sobre el mapa. */
+  labels?: boolean;
   onVertexSelect: (ref: VertexRef | null) => void;
   onVertexMove: (ref: VertexRef, to: LatLng) => void;
   onVertexDelete: (ref: VertexRef) => void;
@@ -52,6 +43,12 @@ export interface GeofenceLayersProps {
   testMode: boolean;
   testPoint: LatLng | null;
   onTestPoint: (point: LatLng) => void;
+  /** Dibujo de un polígono nuevo: cada clic agrega un vértice; clic en el primero lo cierra. */
+  drawing?: DrawDraft | null;
+  onDrawVertex?: (point: LatLng) => void;
+  onDrawClose?: () => void;
+  /** Clic sobre una figura (fuera de edición, dibujo y prueba). */
+  onShapeClick?: (id: string) => void;
 }
 
 function setSource(map: MaplibreMap, id: string, data: unknown): void {
@@ -70,27 +67,58 @@ function vertexRef(e: MapLayerMouseEvent | MapLayerTouchEvent): VertexRef | null
   return { ring: props.ring, vertex: props.vertex };
 }
 
+function ids(prefix: string) {
+  return {
+    src: {
+      shapes: prefix,
+      vertices: `${prefix}-vertices`,
+      midpoints: `${prefix}-midpoints`,
+      draft: `${prefix}-draft`,
+      test: `${prefix}-test-point`,
+    },
+    layer: {
+      fill: `${prefix}-fill`,
+      line: `${prefix}-line`,
+      label: `${prefix}-label`,
+      draftLine: `${prefix}-draft-line`,
+      draftVertices: `${prefix}-draft-vertices`,
+      midpoints: `${prefix}-midpoints`,
+      vertices: `${prefix}-vertices`,
+      test: `${prefix}-test-point`,
+    },
+  };
+}
+
 /**
- * Geocercas sobre <PanterMap>: relleno por tipo (los huecos quedan vacíos), y en edición los
+ * Polígonos sobre <PanterMap> (geocercas de HU-304, barrios y veredas de HU-309): relleno por
+ * color (los huecos quedan vacíos) y, si se pide, el nombre como etiqueta. En edición, los
  * vértices (arrastrar, seleccionar, clic derecho para borrar) y los puntos medios de cada lado
- * (clic para agregar un vértice). En "Probar un punto", un clic marca el punto.
+ * (clic para agregar un vértice). En dibujo, cada clic agrega un vértice y un clic en el primero
+ * cierra el polígono. En "Probar un punto", un clic marca el punto.
  */
-export function GeofenceLayers(props: GeofenceLayersProps) {
+export function PolygonLayers(props: PolygonLayersProps) {
   const handle = usePanterMap();
   const map = handle?.map;
   const revision = handle?.styleRevision;
+  const theme = handle?.theme ?? 'light';
   const latest = useLatest(props);
+  const prefix = props.id ?? 'panter-polygons';
+  const labels = props.labels ?? false;
 
   // Fuentes, capas y eventos (al crear el mapa y tras cada cambio de tema).
   useEffect(() => {
     if (!map) return;
+    const { src: SRC, layer: LAYER } = ids(prefix);
+    const palette = PALETTES[theme];
     const before = map.getLayer(PLACES_LAYER) ? PLACES_LAYER : undefined;
-    for (const id of Object.values(SRC)) map.addSource(id, { type: 'geojson', data: EMPTY });
+    for (const id of Object.values(SRC)) {
+      map.addSource(id, { type: 'geojson', data: EMPTY_COLLECTION });
+    }
     map.addLayer(
       {
         id: LAYER.fill,
         type: 'fill',
-        source: SRC.geofences,
+        source: SRC.shapes,
         paint: {
           'fill-color': ['get', 'color'],
           'fill-opacity': ['case', ['get', 'editing'], 0.3, ['get', 'active'], 0.18, 0.06],
@@ -102,7 +130,7 @@ export function GeofenceLayers(props: GeofenceLayersProps) {
       {
         id: LAYER.line,
         type: 'line',
-        source: SRC.geofences,
+        source: SRC.shapes,
         paint: {
           'line-color': ['get', 'color'],
           'line-width': ['case', ['get', 'editing'], 3.5, 2],
@@ -111,6 +139,47 @@ export function GeofenceLayers(props: GeofenceLayersProps) {
       },
       before,
     );
+    if (labels) {
+      map.addLayer(
+        {
+          id: LAYER.label,
+          type: 'symbol',
+          source: SRC.shapes,
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-font': [FONTS.bold],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 11, 11, 16, 15],
+            'text-max-width': 8,
+          },
+          paint: {
+            'text-color': ['get', 'color'],
+            'text-halo-color': palette.labelHalo,
+            'text-halo-width': 2,
+            'text-opacity': ['case', ['get', 'active'], 1, 0.55],
+          },
+        },
+        before,
+      );
+    }
+    map.addLayer({
+      id: LAYER.draftLine,
+      type: 'line',
+      source: SRC.draft,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      paint: { 'line-color': '#b45309', 'line-width': 3, 'line-dasharray': [2, 1.5] },
+    });
+    map.addLayer({
+      id: LAYER.draftVertices,
+      type: 'circle',
+      source: SRC.draft,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: {
+        'circle-radius': ['case', ['get', 'first'], 9, 6],
+        'circle-color': ['case', ['get', 'first'], '#f59e0b', '#ffffff'],
+        'circle-stroke-color': '#1c1917',
+        'circle-stroke-width': 2.5,
+      },
+    });
     map.addLayer({
       id: LAYER.midpoints,
       type: 'circle',
@@ -147,6 +216,7 @@ export function GeofenceLayers(props: GeofenceLayersProps) {
     });
 
     const canvas = map.getCanvas();
+    const idleCursor = () => (latest.current.testMode || latest.current.drawing ? 'crosshair' : '');
 
     const startDrag = (e: MapLayerMouseEvent | MapLayerTouchEvent) => {
       const ref = vertexRef(e);
@@ -164,7 +234,7 @@ export function GeofenceLayers(props: GeofenceLayersProps) {
         map.off('touchmove', move);
         map.off('mouseup', stop);
         map.off('touchend', stop);
-        canvas.style.cursor = '';
+        canvas.style.cursor = idleCursor();
       };
       map.on('mousemove', move);
       map.on('touchmove', move);
@@ -179,16 +249,36 @@ export function GeofenceLayers(props: GeofenceLayersProps) {
       latest.current.onVertexDelete(ref);
     };
 
+    const present = (layers: string[]) => layers.filter((id) => map.getLayer(id));
+
     const click = (e: MapMouseEvent) => {
-      const layers = [LAYER.vertices, LAYER.midpoints].filter((id) => map.getLayer(id));
-      const hit = map.queryRenderedFeatures(e.point, { layers })[0];
+      const current = latest.current;
+      if (current.drawing) {
+        const first = map
+          .queryRenderedFeatures(e.point, { layers: present([LAYER.draftVertices]) })
+          .find((f) => f.properties?.first === true);
+        if (first && current.drawing.length >= 3) current.onDrawClose?.();
+        else current.onDrawVertex?.(toLatLng(e));
+        return;
+      }
+      const hit = map.queryRenderedFeatures(e.point, {
+        layers: present([LAYER.vertices, LAYER.midpoints]),
+      })[0];
       if (hit?.layer.id === LAYER.midpoints) {
         const { ring, side } = hit.properties as { ring: number; side: number };
-        latest.current.onMidpointClick(ring, side);
+        current.onMidpointClick(ring, side);
         return;
       }
       if (hit) return;
-      if (latest.current.testMode) latest.current.onTestPoint(toLatLng(e));
+      if (current.testMode) {
+        current.onTestPoint(toLatLng(e));
+        return;
+      }
+      if (current.onShapeClick && !current.editing) {
+        const shape = map.queryRenderedFeatures(e.point, { layers: present([LAYER.fill]) })[0];
+        const id = shape?.properties?.id;
+        if (typeof id === 'string') current.onShapeClick(id);
+      }
     };
 
     const pointer = () => {
@@ -198,7 +288,7 @@ export function GeofenceLayers(props: GeofenceLayersProps) {
       canvas.style.cursor = 'grab';
     };
     const reset = () => {
-      canvas.style.cursor = latest.current.testMode ? 'crosshair' : '';
+      canvas.style.cursor = idleCursor();
     };
 
     map.on('mousedown', LAYER.vertices, startDrag);
@@ -220,26 +310,31 @@ export function GeofenceLayers(props: GeofenceLayersProps) {
       map.off('mouseleave', LAYER.midpoints, reset);
       removeLayers(map, Object.values(LAYER).reverse(), Object.values(SRC));
     };
-  }, [map, revision, latest]);
+  }, [map, revision, theme, prefix, labels, latest]);
 
-  const { geofences, editing, testMode, testPoint } = props;
+  const { shapes, editing, testMode, testPoint, drawing } = props;
 
   useEffect(() => {
     if (!map) return;
-    const shown = geofences.map((g) =>
-      editing?.id === g.id ? { ...g, polygon: editing.rings } : g,
-    );
-    setSource(map, SRC.geofences, geofencesFeatureCollection(shown, editing?.id ?? null));
+    const { src: SRC } = ids(prefix);
+    const shown = shapes.map((s) => (editing?.id === s.id ? { ...s, polygon: editing.rings } : s));
+    setSource(map, SRC.shapes, shapesFeatureCollection(shown, editing?.id ?? null));
     setSource(
       map,
       SRC.vertices,
-      editing ? vertexFeatureCollection(editing.rings, editing.selected) : EMPTY,
+      editing ? vertexFeatureCollection(editing.rings, editing.selected) : EMPTY_COLLECTION,
     );
-    setSource(map, SRC.midpoints, editing ? midpointFeatureCollection(editing.rings) : EMPTY);
-  }, [map, revision, geofences, editing]);
+    setSource(
+      map,
+      SRC.midpoints,
+      editing ? midpointFeatureCollection(editing.rings) : EMPTY_COLLECTION,
+    );
+  }, [map, revision, theme, prefix, labels, shapes, editing]);
 
   useEffect(() => {
     if (!map) return;
+    const { src: SRC } = ids(prefix);
+    setSource(map, SRC.draft, drawing ? draftFeatureCollection(drawing) : EMPTY_COLLECTION);
     setSource(
       map,
       SRC.test,
@@ -254,10 +349,10 @@ export function GeofenceLayers(props: GeofenceLayersProps) {
               },
             ],
           }
-        : EMPTY,
+        : EMPTY_COLLECTION,
     );
-    map.getCanvas().style.cursor = testMode ? 'crosshair' : '';
-  }, [map, revision, testMode, testPoint]);
+    map.getCanvas().style.cursor = testMode || drawing ? 'crosshair' : '';
+  }, [map, revision, theme, prefix, labels, testMode, testPoint, drawing]);
 
   return null;
 }

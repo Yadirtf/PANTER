@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AIRPORT, PERIPHERAL } from '../server/fares-test-data';
+import { AIRPORT, PERIPHERAL } from '@/features/fares/server/fares-test-data';
 import {
   canDeleteVertex,
   deleteVertex,

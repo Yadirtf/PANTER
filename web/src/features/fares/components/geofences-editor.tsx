@@ -33,25 +33,25 @@ import { GEOFENCE_KIND_COLOR, geofencesAt, shownGeofence } from '../lib/geofence
 import { diffSnapshots, type FieldChange } from '../lib/history';
 import { fareErrorMessage, polygonRejectionMessage } from '../lib/messages';
 import {
-  canDeleteVertex,
+  PolygonLayers,
+  type PolygonEditing,
+} from '@/features/geo-editor/components/polygon-layers';
+import { PolygonPanel } from '@/features/geo-editor/components/polygon-panel';
+import {
   deleteVertex,
   describePolygonChange,
   insertMidpoint,
-  MIN_VERTICES_MESSAGE,
   moveVertex,
   samePolygon,
   toEditable,
   type EditableRings,
   type VertexRef,
-} from '../lib/polygon-edit';
-import { polygonIssues, ringName } from '../lib/polygon-validation';
+} from '@/features/geo-editor/lib/polygon-edit';
+import { polygonIssues } from '@/features/geo-editor/lib/polygon-validation';
 import { DiffList, inputClass, MoneyField } from './form-fields';
-import { GeofenceLayers, type GeofenceEditing } from './geofence-layers';
 
 export const MAP_HELP =
   'Haz clic en «Editar» en una geocerca para cambiar su polígono sobre el mapa. Con «Probar un punto» compruebas qué recargos cobra un lugar.';
-export const EDIT_HELP =
-  'Arrastra un vértice para moverlo. Haz clic en un punto pequeño (la mitad de un lado) para agregar un vértice. Para borrar uno, selecciónalo y pulsa «Borrar vértice» (o haz clic derecho sobre él). Cada borde necesita al menos 3 vértices.';
 export const TEST_POINT_HELP =
   'Haz clic en el mapa para ver qué geocercas cubren ese punto y qué recargo se cobraría.';
 
@@ -60,7 +60,7 @@ export function GeofencesEditor({ geofences }: { geofences: readonly Geofence[] 
   const [savedPolygons, setSavedPolygons] = useState<Record<string, PolygonRings>>(() =>
     Object.fromEntries(geofences.map((g) => [g.id, g.polygon])),
   );
-  const [editing, setEditing] = useState<GeofenceEditing | null>(null);
+  const [editing, setEditing] = useState<PolygonEditing | null>(null);
   const [mapMessage, setMapMessage] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(false);
   const [testPoint, setTestPoint] = useState<LatLng | null>(null);
@@ -149,8 +149,9 @@ export function GeofencesEditor({ geofences }: { geofences: readonly Geofence[] 
         </div>
 
         <PanterMap ariaLabel="Mapa de geocercas de Villagarzón" className="h-[28rem]">
-          <GeofenceLayers
-            geofences={shown}
+          <PolygonLayers
+            id="panter-geofences"
+            shapes={shown}
             editing={editing}
             testMode={testMode}
             testPoint={testPoint}
@@ -173,7 +174,7 @@ export function GeofencesEditor({ geofences }: { geofences: readonly Geofence[] 
 
         {editing && editingGeofence ? (
           <PolygonPanel
-            geofence={editingGeofence}
+            title={`Editando el polígono de ${editingGeofence.name}`}
             saved={polygonOf(editingGeofence)}
             editing={editing}
             message={mapMessage}
@@ -272,114 +273,6 @@ export function TestPointResult({
       className="flex flex-col gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-stone-700"
     >
       {content}
-    </div>
-  );
-}
-
-function PolygonPanel({
-  geofence,
-  saved,
-  editing,
-  message,
-  onSelect,
-  onDelete,
-  onInsertAfter,
-  onReset,
-}: {
-  geofence: Geofence;
-  saved: PolygonRings;
-  editing: GeofenceEditing;
-  message: string | null;
-  onSelect: (ref: VertexRef) => void;
-  onDelete: (ref: VertexRef) => void;
-  onInsertAfter: (ref: VertexRef) => void;
-  onReset: () => void;
-}) {
-  const issues = polygonIssues(editing.rings);
-  const changed = !samePolygon(saved, editing.rings);
-  const selected = editing.selected;
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-stone-700">
-      <p className="font-medium text-stone-900">Editando el polígono de {geofence.name}</p>
-      <p>{EDIT_HELP}</p>
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          disabled={!selected || !canDeleteVertex(editing.rings, selected.ring)}
-          onClick={() => selected && onDelete(selected)}
-          title={
-            selected && !canDeleteVertex(editing.rings, selected.ring)
-              ? MIN_VERTICES_MESSAGE
-              : undefined
-          }
-          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-medium hover:bg-stone-100 disabled:opacity-60"
-        >
-          Borrar vértice
-        </button>
-        <button
-          type="button"
-          disabled={!changed}
-          onClick={onReset}
-          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-medium hover:bg-stone-100 disabled:opacity-60"
-        >
-          Deshacer cambios del polígono
-        </button>
-      </div>
-      <div aria-live="polite">
-        {message ? <p className="text-red-700">{message}</p> : null}
-        {issues.length > 0 ? (
-          <ul className="list-disc pl-5 text-red-700">
-            {issues.map((issue, i) => (
-              <li key={i}>{issue.message}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-      <details>
-        <summary className="cursor-pointer">
-          Vértices ({polygonSummary({ polygon: editing.rings })})
-        </summary>
-        <ol className="mt-2 flex flex-col gap-2">
-          {editing.rings.map((ring, r) => (
-            <li key={r}>
-              <p className="font-medium">{ringName(r)}</p>
-              <ol className="ml-4 flex list-decimal flex-col gap-1 font-mono text-xs">
-                {ring.map((point, v) => {
-                  const isSelected = selected?.ring === r && selected.vertex === v;
-                  return (
-                    <li key={v} className={isSelected ? 'font-bold text-amber-800' : undefined}>
-                      <span>{formatLatLng(point)}</span>{' '}
-                      <button
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() => onSelect({ ring: r, vertex: v })}
-                        className="font-sans underline"
-                      >
-                        Seleccionar
-                      </button>{' '}
-                      <button
-                        type="button"
-                        onClick={() => onInsertAfter({ ring: r, vertex: v })}
-                        className="font-sans underline"
-                      >
-                        Agregar después
-                      </button>{' '}
-                      <button
-                        type="button"
-                        disabled={!canDeleteVertex(editing.rings, r)}
-                        onClick={() => onDelete({ ring: r, vertex: v })}
-                        className="font-sans underline disabled:no-underline disabled:opacity-50"
-                      >
-                        Borrar
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            </li>
-          ))}
-        </ol>
-      </details>
     </div>
   );
 }
