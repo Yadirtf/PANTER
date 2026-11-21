@@ -4,12 +4,14 @@ import {
   isInServiceArea,
   type Geofence,
   type LatLng,
+  type Place,
   type PolygonRings,
   type VehicleType,
 } from '@panter/contracts';
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { handleAdminFailure } from '@/features/admin/lib/admin-failure';
+import { CatalogPlacesLayer } from '@/features/map/components/catalog-places-layer';
 import { PanterMap } from '@/features/map/components/panter-map';
 import { toApiError } from '@/shared/api/errors';
 import { formatCop, VEHICLE_LABEL } from '@/shared/lib/format';
@@ -56,7 +58,14 @@ export const TEST_POINT_HELP =
   'Haz clic en el mapa para ver qué geocercas cubren ese punto y qué recargo se cobraría.';
 
 /** Geocercas con recargo (HU-403) con su polígono editable sobre el mapa (HU-304). */
-export function GeofencesEditor({ geofences }: { geofences: readonly Geofence[] }) {
+export function GeofencesEditor({
+  geofences,
+  places = [],
+}: {
+  geofences: readonly Geofence[];
+  /** Lugares del catálogo (GET /places, HU-310) como referencia sobre el mapa. */
+  places?: readonly Place[];
+}) {
   const [savedPolygons, setSavedPolygons] = useState<Record<string, PolygonRings>>(() =>
     Object.fromEntries(geofences.map((g) => [g.id, g.polygon])),
   );
@@ -149,6 +158,7 @@ export function GeofencesEditor({ geofences }: { geofences: readonly Geofence[] 
         </div>
 
         <PanterMap ariaLabel="Mapa de geocercas de Villagarzón" className="h-[28rem]">
+          <CatalogPlacesLayer places={places} />
           <PolygonLayers
             id="panter-geofences"
             shapes={shown}

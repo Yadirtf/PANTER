@@ -5,6 +5,7 @@ import { STAFF_PANEL_LABEL } from '@/features/navigation/role-home';
 import { ADMIN_AREAS_PATH } from '@/features/areas/lib/areas';
 import { ADMIN_DRIVERS_PATH } from '@/features/drivers/lib/drivers';
 import { ADMIN_FARES_PATH } from '@/features/fares/lib/fares';
+import { ADMIN_PLACES_PATH } from '@/features/places/lib/places';
 import { ADMIN_USERS_PATH } from '../lib/users';
 
 const linkClass =
@@ -53,6 +54,11 @@ export function AdminDashboardPlaceholder({
           <li>
             <Link href={ADMIN_AREAS_PATH} className={linkClass}>
               Barrios y veredas
+            </Link>
+          </li>
+          <li>
+            <Link href={ADMIN_PLACES_PATH} className={linkClass}>
+              Lugares
             </Link>
           </li>
         </ul>

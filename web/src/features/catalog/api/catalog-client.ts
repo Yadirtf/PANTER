@@ -2,12 +2,16 @@ import {
   AreaImportResultSchema,
   AreaSchema,
   CatalogHistoryResponseSchema,
+  PlaceSchema,
   type Area,
   type AreaCreateBody,
   type AreaImportBody,
   type AreaImportResult,
   type AreaUpdateBody,
   type CatalogHistoryResponse,
+  type Place,
+  type PlaceCreateBody,
+  type PlaceUpdateBody,
 } from '@panter/contracts';
 import { z } from 'zod';
 import { createHttpClient, type HttpClient } from '@/shared/api/http-client';
@@ -19,6 +23,9 @@ export const CatalogBffRoutes = {
   AREA_IMPORT: '/api/admin/areas/import',
   area: (id: string) => `/api/admin/areas/${encodeURIComponent(id)}`,
   areaHistory: (id: string) => `/api/admin/areas/${encodeURIComponent(id)}/history`,
+  PLACES: '/api/admin/places',
+  place: (id: string) => `/api/admin/places/${encodeURIComponent(id)}`,
+  placeHistory: (id: string) => `/api/admin/places/${encodeURIComponent(id)}/history`,
 } as const;
 
 export interface CatalogClientConfig {
@@ -83,6 +90,40 @@ export function fetchAreaHistory(
   config: CatalogClientConfig = {},
 ): Promise<CatalogHistoryResponse> {
   return client(config).get(CatalogBffRoutes.areaHistory(id), {
+    schema: CatalogHistoryResponseSchema,
+    query: { cursor },
+  });
+}
+
+/** Lugar guardado con el barrio que calculó la API, si la respuesta tiene el formato de PlaceSchema. */
+function asPlace(value: unknown): Place | null {
+  const parsed = PlaceSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+export async function createPlace(
+  body: PlaceCreateBody,
+  config: CatalogClientConfig = {},
+): Promise<Place | null> {
+  return asPlace(await client(config).post(CatalogBffRoutes.PLACES, { schema: z.unknown(), body }));
+}
+
+export async function updatePlace(
+  id: string,
+  body: PlaceUpdateBody,
+  config: CatalogClientConfig = {},
+): Promise<Place | null> {
+  return asPlace(
+    await client(config).patch(CatalogBffRoutes.place(id), { schema: z.unknown(), body }),
+  );
+}
+
+export function fetchPlaceHistory(
+  id: string,
+  cursor?: string,
+  config: CatalogClientConfig = {},
+): Promise<CatalogHistoryResponse> {
+  return client(config).get(CatalogBffRoutes.placeHistory(id), {
     schema: CatalogHistoryResponseSchema,
     query: { cursor },
   });

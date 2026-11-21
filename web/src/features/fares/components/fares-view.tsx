@@ -1,4 +1,4 @@
-import type { FareConfigResponse } from '@panter/contracts';
+import type { FareConfigResponse, Place } from '@panter/contracts';
 import type { ServerLoad } from '@/features/auth/server/server-load';
 import { fareErrorMessage } from '../lib/messages';
 import type { FareHistoryResponse } from '../server/fares-api';
@@ -11,9 +11,12 @@ type Shown<T> = Extract<ServerLoad<T>, { kind: 'ok' | 'error' }>;
 export function FaresView({
   config,
   history,
+  places = [],
 }: {
   config: Shown<FareConfigResponse>;
   history: Shown<FareHistoryResponse>;
+  /** Lugares del catálogo (GET /places) para el mapa; vacío si no cargaron. */
+  places?: readonly Place[];
 }) {
   const geofences = config.kind === 'ok' ? config.data.geofences : [];
   return (
@@ -31,7 +34,7 @@ export function FaresView({
       </div>
 
       {config.kind === 'ok' ? (
-        <FaresEditor config={config.data} />
+        <FaresEditor config={config.data} places={places} />
       ) : (
         <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-red-800">
           {fareErrorMessage(config.code)}

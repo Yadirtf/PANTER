@@ -8,6 +8,7 @@ import {
   type BuildStyleOptions,
   type MapTheme,
 } from '@panter/map-style';
+import { withCatalogPlaces } from './catalog-places';
 
 /**
  * Mapa base de PANTER en la web (HU-304): el manifiesto `/tiles/basemap.json` de panter-api
@@ -100,7 +101,10 @@ export async function loadBasemap(
   return { manifest, urls: basemapUrls(apiUrl, manifest) };
 }
 
-/** Estilo de PANTER para el tema dado. */
+/**
+ * Estilo de PANTER para el tema dado. Los lugares no son los fijos de map-style: la fuente
+ * empieza vacía y <CatalogPlacesLayer> la llena con GET /places (HU-310).
+ */
 export function panterStyle(urls: BasemapUrls, theme: MapTheme) {
-  return buildStyle({ ...urls, theme });
+  return withCatalogPlaces(buildStyle({ ...urls, theme }));
 }
