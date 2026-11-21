@@ -5,6 +5,8 @@ import {
   type DriverApplyBody,
   DriverApplyBodySchema,
   isValidPlateFor,
+  MIN_VEHICLE_YEAR,
+  maxVehicleYear,
   normalizePlate,
   type DriverProfile,
   VehicleType,
@@ -110,12 +112,8 @@ export const EMPTY_VEHICLE_FORM: VehicleFormValues = {
   year: '',
 };
 
-export const MIN_VEHICLE_YEAR = 1980;
-
-/** Año máximo aceptado por el contrato: el siguiente al actual (modelos del año entrante). */
-export function maxVehicleYear(now: Date = new Date()): number {
-  return now.getUTCFullYear() + 1;
-}
+// Límites del año del modelo: los mismos del contrato (la API valida con ellos).
+export { MIN_VEHICLE_YEAR, maxVehicleYear } from '@panter/contracts';
 
 /** Formulario precargado con el vehículo ya registrado (GET /drivers/me). */
 export function vehicleFormFromProfile(profile: Pick<DriverProfile, 'vehicle'>): VehicleFormValues {
