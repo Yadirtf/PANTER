@@ -3,6 +3,8 @@ import {
   AreaCreateBodySchema,
   AreaImportBodySchema,
   AreaUpdateBodySchema,
+  PlaceCreateBodySchema,
+  PlaceUpdateBodySchema,
   type Area,
 } from '@panter/contracts';
 import { NextResponse, type NextRequest } from 'next/server';
@@ -21,7 +23,7 @@ import { AREA_DETAILS_MAX_IDS } from '../lib/limits';
 import type { CatalogApi } from './catalog-api';
 
 /**
- * Route handlers BFF del catálogo geográfico (E15): `/api/admin/areas/*`. Validan el cuerpo con
+ * Route handlers BFF del catálogo geográfico (E15): `/api/admin/areas/*` y `/api/admin/places/*`. Validan el cuerpo con
  * los esquemas de contracts y reenvían a panter-api con el access token de la cookie (Bearer, de
  * servidor a servidor). La API decide si la sesión es ADMIN y vuelve a validar.
  */
@@ -149,6 +151,61 @@ export async function handleAreaHistory(
     request,
     deps.refresh,
     (token) => deps.catalog.areaHistory(token, id, cursor),
+    ok,
+  );
+}
+
+// --- Lugares (HU-310) ---
+
+function placeNotFound(): NextResponse {
+  return errorJson(404, ApiErrorCode.NOT_FOUND, 'Lugar no encontrado.');
+}
+
+/** POST /api/admin/places → POST /admin/places. */
+export async function handleCreatePlace(
+  request: NextRequest,
+  deps: CatalogRouteDeps,
+): Promise<NextResponse> {
+  const body = await readJson(request, PlaceCreateBodySchema);
+  if (!body.ok) return body.response;
+  return respondWithSession(
+    request,
+    deps.refresh,
+    (token) => deps.catalog.createPlace(token, body.data),
+    ok,
+  );
+}
+
+/** PATCH /api/admin/places/:id → PATCH /admin/places/:id. */
+export async function handleUpdatePlace(
+  request: NextRequest,
+  id: string,
+  deps: CatalogRouteDeps,
+): Promise<NextResponse> {
+  const body = await readJson(request, PlaceUpdateBodySchema);
+  if (!body.ok) return body.response;
+  if (!isUuid(id)) return placeNotFound();
+  return respondWithSession(
+    request,
+    deps.refresh,
+    (token) => deps.catalog.updatePlace(token, id, body.data),
+    ok,
+  );
+}
+
+/** GET /api/admin/places/:id/history?cursor= → GET /admin/places/:id/history. */
+export async function handlePlaceHistory(
+  request: NextRequest,
+  id: string,
+  deps: CatalogRouteDeps,
+): Promise<NextResponse> {
+  if (isCrossSite(request)) return crossSiteResponse();
+  if (!isUuid(id)) return placeNotFound();
+  const cursor = request.nextUrl.searchParams.get('cursor')?.slice(0, 512) || undefined;
+  return respondWithSession(
+    request,
+    deps.refresh,
+    (token) => deps.catalog.placeHistory(token, id, cursor),
     ok,
   );
 }

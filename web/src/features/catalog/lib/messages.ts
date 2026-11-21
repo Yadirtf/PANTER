@@ -5,6 +5,8 @@ import { polygonRejectionMessage } from '@/features/fares/lib/messages';
 /** Mensajes del catálogo geográfico (E15: barrios, veredas y lugares) para cada código de error. */
 export const CATALOG_ERROR_MESSAGES: Record<string, string> = {
   ...ADMIN_ERROR_MESSAGES,
+  [ApiErrorCode.PLACE_SLUG_TAKEN]:
+    'Ya existe un lugar con ese identificador. Cambia el identificador (por ejemplo, agrega el barrio o la vereda).',
   [ApiErrorCode.AREA_NAME_TAKEN]:
     'Ya existe un barrio o vereda con ese nombre. Usa otro nombre o edita el que ya existe.',
   [ApiErrorCode.INVALID_POLYGON]:
@@ -53,4 +55,20 @@ export function catalogFailureMessage(error: {
       : catalogErrorMessage(error.code);
   }
   return polygonRejectionMessage(error) ?? catalogErrorMessage(error.code);
+}
+
+/** Mensajes propios de los lugares (HU-310) donde el genérico habla de barrios. */
+export const PLACE_ERROR_MESSAGES: Record<string, string> = {
+  [ApiErrorCode.NOT_FOUND]: 'No encontramos ese lugar. Puede que ya no exista; recarga la página.',
+  [ApiErrorCode.VALIDATION_ERROR]:
+    'Algún dato no es válido. Revisa el nombre (de 2 a 80 caracteres), el identificador, la categoría y la ubicación.',
+};
+
+/** Como catalogFailureMessage, con los mensajes de lugares. */
+export function placeFailureMessage(error: {
+  code: string;
+  message: string;
+  details?: unknown;
+}): string {
+  return PLACE_ERROR_MESSAGES[error.code] ?? catalogFailureMessage(error);
 }

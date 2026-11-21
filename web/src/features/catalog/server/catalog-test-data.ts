@@ -1,5 +1,5 @@
-// Datos solo para pruebas del catálogo geográfico (E15): barrios y veredas de Villagarzón.
-import type { Area, AreaSummary, CatalogChange, LatLng } from '@panter/contracts';
+// Datos solo para pruebas del catálogo geográfico (E15): barrios, veredas y lugares de Villagarzón.
+import type { Area, AreaSummary, CatalogChange, LatLng, Place } from '@panter/contracts';
 
 export const CENTRO_ID = '7d2e9b3f-1c8a-4e5b-8f60-2b3c4d5e6f01';
 export const SAN_JOSE_ID = '7d2e9b3f-1c8a-4e5b-8f60-2b3c4d5e6f02';
@@ -86,4 +86,77 @@ export const AREA_CHANGE: CatalogChange = {
   },
   changedBy: 'admin@panter.test',
   changedAt: '2026-11-16T15:30:00.000Z',
+};
+
+// --- Lugares (HU-310): la semilla 0007 de api-core y uno verificado ---
+
+const place = (
+  overrides: Partial<Place> & Pick<Place, 'id' | 'slug' | 'name' | 'category' | 'location'>,
+): Place => ({
+  pickupPoint: null,
+  area: null,
+  verified: false,
+  active: true,
+  source: 'Estimación de zona (error 5–8 km). Corregir con la ubicación real',
+  updatedAt: '2026-11-15T14:00:00.000Z',
+  ...overrides,
+});
+
+export const AIRPORT_PLACE = place({
+  id: '9f4a1d5b-3e0c-4a7d-8b82-4d5e6f7a8b01',
+  slug: 'aeropuerto-cananguchal',
+  name: 'Aeropuerto Cananguchal',
+  category: 'AIRPORT',
+  location: { lat: 0.9789, lng: -76.6053 },
+  verified: true,
+  source: 'Coordenada publicada del aeródromo (SKVG/VGZ)',
+});
+
+export const PARK_PLACE = place({
+  id: '9f4a1d5b-3e0c-4a7d-8b82-4d5e6f7a8b02',
+  slug: 'parque-principal',
+  name: 'Parque principal',
+  category: 'PARK',
+  location: { lat: 1.0295, lng: -76.6165 },
+  area: { id: CENTRO_ID, name: 'Centro', kind: 'BARRIO', active: true },
+  source: 'Centro urbano de Villagarzón, sin verificar en sitio (error ≈ 300 m)',
+});
+
+export const POZO_AZUL = place({
+  id: '9f4a1d5b-3e0c-4a7d-8b82-4d5e6f7a8b03',
+  slug: 'pozo-azul',
+  name: 'Pozo Azul',
+  category: 'TOURISM',
+  location: { lat: 1.045, lng: -76.64 },
+});
+
+export const HOSPITAL = place({
+  id: '9f4a1d5b-3e0c-4a7d-8b82-4d5e6f7a8b04',
+  slug: 'hospital-local',
+  name: 'Hospital local',
+  category: 'HEALTH',
+  location: { lat: 1.0301, lng: -76.6181 },
+  pickupPoint: { lat: 1.0303, lng: -76.6178 },
+  area: { id: CENTRO_ID, name: 'Centro', kind: 'BARRIO', active: true },
+  verified: true,
+  active: false,
+  source: 'GPS en sitio',
+});
+
+export const ALL_PLACES = [AIRPORT_PLACE, PARK_PLACE, POZO_AZUL, HOSPITAL];
+
+export const PLACE_CHANGE: CatalogChange = {
+  id: '8e3f0c4a-2d9b-4f6c-9a71-3c4d5e6f7a02',
+  entity: 'PLACE',
+  entityId: POZO_AZUL.id,
+  action: 'UPDATE',
+  before: { name: 'Pozo Azul', category: 'TOURISM', location: POZO_AZUL.location, verified: false },
+  after: {
+    name: 'Pozo Azul',
+    category: 'PARK',
+    location: { lat: 1.0512, lng: -76.6433 },
+    verified: true,
+  },
+  changedBy: 'admin@panter.test',
+  changedAt: '2026-11-20T16:00:00.000Z',
 };

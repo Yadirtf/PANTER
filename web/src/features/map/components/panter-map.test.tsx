@@ -3,10 +3,17 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { API_URL, apiError, jsonResponse } from '@/features/auth/server/test-helpers';
+import { createCatalogApi } from '@/features/catalog/server/catalog-api';
+import { AIRPORT_PLACE, PARK_PLACE, POZO_AZUL } from '@/features/catalog/server/catalog-test-data';
+import { loadPublicPlaces } from '@/features/catalog/server/load-catalog';
 import {
   DispatchConsole,
   FLEET_PENDING_NOTE,
+  PLACES_UNAVAILABLE_NOTE,
+  UNVERIFIED_NOTE,
 } from '@/features/dispatch/components/dispatch-console';
+import { mockFetch } from '@/features/drivers/server/drivers-test-data';
 import { MAP_LOADING_TEXT } from './map-loading';
 import { MarkerLayer } from './marker-layer';
 import { PanterMap } from './panter-map';
@@ -52,13 +59,43 @@ describe('<PanterMap> en el servidor', () => {
 });
 
 describe('/despacho', () => {
-  it('mapa de despacho con los lugares clave y aviso de la flota de HU-504', () => {
-    const html = renderToString(<DispatchConsole />);
+  it('mapa de despacho con los lugares del catálogo (no los fijos) y aviso de la flota', () => {
+    const html = renderToString(
+      <DispatchConsole places={{ kind: 'ok', places: [AIRPORT_PLACE, PARK_PLACE, POZO_AZUL] }} />,
+    );
     expect(html).toContain('data-panter-map="Mapa de despacho de Villagarzón"');
-    for (const place of ['Aeropuerto Cananguchal', 'Parque principal', 'Pozo Azul', 'Mohano']) {
+    for (const place of ['Aeropuerto Cananguchal', 'Parque principal', 'Pozo Azul']) {
       expect(html).toContain(place);
     }
-    expect(html).toContain('Ubicación aproximada, por verificar en campo');
+    // Mohano sigue en map-style (KEY_PLACES), pero ya no se muestra: no vino de GET /places.
+    expect(html).not.toContain('Mohano');
+    // Solo los no verificados llevan el aviso (el aeropuerto está verificado).
+    expect(html.split(UNVERIFIED_NOTE)).toHaveLength(3);
     expect(html).toContain(FLEET_PENDING_NOTE);
+  });
+
+  it('si GET /places falla, el mapa sigue y hay un aviso', () => {
+    const html = renderToString(
+      <DispatchConsole places={{ kind: 'error', code: 'NETWORK_ERROR' }} />,
+    );
+    expect(html).toContain('data-panter-map="Mapa de despacho de Villagarzón"');
+    expect(html).toContain(PLACES_UNAVAILABLE_NOTE);
+  });
+
+  it('la página lee GET /places en el servidor, sin token (es público)', async () => {
+    const fetchMock = mockFetch({
+      'GET /places': () => jsonResponse({ items: [AIRPORT_PLACE] }),
+    });
+    const load = await loadPublicPlaces(createCatalogApi({ apiUrl: API_URL, fetch: fetchMock }));
+    expect(load).toEqual({ kind: 'ok', places: [AIRPORT_PLACE] });
+    const init = fetchMock.mock.calls[0]![1]!;
+    expect(init.headers as Record<string, string>).not.toHaveProperty('authorization');
+    const failed = await loadPublicPlaces(
+      createCatalogApi({
+        apiUrl: API_URL,
+        fetch: mockFetch({ 'GET /places': () => apiError(500, 'INTERNAL_ERROR') }),
+      }),
+    );
+    expect(failed).toEqual({ kind: 'error', code: 'INTERNAL_ERROR' });
   });
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import type { Place } from '@panter/contracts';
 import {
   PricingModel,
   PricingModelSchema,
@@ -37,7 +38,14 @@ type Forms = Partial<Record<VehicleType, RuleForm>>;
 type Saved = Partial<Record<VehicleType, FareRuleUpdateBody>>;
 
 /** Tarjetas de reglas, vista previa y geocercas de /admin/tarifas (HU-403). */
-export function FaresEditor({ config }: { config: FareConfigResponse }) {
+export function FaresEditor({
+  config,
+  places = [],
+}: {
+  config: FareConfigResponse;
+  /** Lugares del catálogo (GET /places) para el mapa de geocercas. */
+  places?: readonly Place[];
+}) {
   const rules = VEHICLE_ORDER.flatMap((type) => {
     const rule = config.rules.find((r) => r.vehicleType === type);
     return rule ? [rule] : [];
@@ -87,7 +95,7 @@ export function FaresEditor({ config }: { config: FareConfigResponse }) {
         )}
       </section>
 
-      <GeofencesEditor geofences={config.geofences} />
+      <GeofencesEditor geofences={config.geofences} places={places} />
     </div>
   );
 }
