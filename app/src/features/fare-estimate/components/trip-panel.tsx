@@ -1,7 +1,9 @@
-// Panel inferior del pasajero (HU-404): destino, vehículo y estimado con desglose.
+// Panel inferior del pasajero (HU-404): destino, vehículo y estimado con desglose. El destino se
+// elige por lugar, barrio o vereda, o tocando el mapa (HU-311), y el origen y el destino se
+// describen siempre como "Barrio X · cerca de Y".
 import { MaterialIcons } from '@expo/vector-icons';
-import { VehicleType } from '@panter/contracts';
-import { type Dispatch, useMemo, useState } from 'react';
+import { type LatLng, VehicleType } from '@panter/contracts';
+import type { Dispatch } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,7 +13,10 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Button, colors, ErrorMessage, Field } from '../../../shared/ui/form';
+import { Button, colors, ErrorMessage } from '../../../shared/ui/form';
+import { DestinationPicker } from '../../catalog/components/destination-picker';
+import { useLocationDescription } from '../../catalog/hooks/use-location-description';
+import { areaLabel } from '../../catalog/selection';
 import { mapBreakdown, VEHICLE_LABELS } from '../estimate/breakdown';
 import { formatCop, formatDistance, formatDuration } from '../estimate/format';
 import {
@@ -24,7 +29,6 @@ import {
 } from '../estimate/planner';
 import type { QuoteValidity } from '../estimate/quote-validity';
 import type { RouteNotices } from '../estimate/route-quality';
-import { searchPlaces } from '../places/frequent-places';
 
 interface TripPanelProps {
   state: PlannerState;
@@ -35,6 +39,7 @@ interface TripPanelProps {
 export function TripPanel({ state, dispatch, validity }: TripPanelProps) {
   const { height } = useWindowDimensions();
   const step = plannerStep(state);
+  const destinationPoint = state.candidate?.point ?? state.destination?.point ?? null;
   return (
     <View style={styles.card}>
       <ScrollView
@@ -44,9 +49,11 @@ export function TripPanel({ state, dispatch, validity }: TripPanelProps) {
       >
         {step === 'choose-destination' ? (
           <ChooseDestination state={state} dispatch={dispatch} />
+        ) : step === 'pick-in-area' ? (
+          <PickInArea state={state} dispatch={dispatch} />
         ) : step === 'confirm-destination' ? (
           <>
-            <Text style={styles.title}>Destino en el mapa</Text>
+            <Text style={styles.title}>{state.candidate?.name ?? 'Destino en el mapa'}</Text>
             <Text style={styles.muted}>
               ¿Es aquí? Puedes tocar otro punto del mapa para moverlo.
             </Text>
@@ -63,63 +70,80 @@ export function TripPanel({ state, dispatch, validity }: TripPanelProps) {
         ) : (
           <Quote state={state} dispatch={dispatch} validity={validity} />
         )}
+        <TripDescriptions origin={state.origin.point} destination={destinationPoint} />
       </ScrollView>
     </View>
   );
 }
 
+/** Recogida y destino descritos como "Barrio X · cerca de Y" (con debounce y caché). */
+function TripDescriptions({ origin, destination }: { origin: LatLng; destination: LatLng | null }) {
+  return (
+    <View style={styles.descriptions}>
+      <DescriptionLine label="Recogida" color="#15803d" point={origin} />
+      {destination ? <DescriptionLine label="Destino" color="#b42318" point={destination} /> : null}
+    </View>
+  );
+}
+
+function DescriptionLine({ label, color, point }: { label: string; color: string; point: LatLng }) {
+  const description = useLocationDescription(point);
+  const text =
+    description === null
+      ? 'Buscando el barrio…'
+      : (description.text ?? 'Fuera de los barrios y veredas registrados');
+  return (
+    <View style={styles.descriptionRow}>
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <Text style={styles.small} numberOfLines={2}>
+        <Text style={styles.descriptionLabel}>{label}: </Text>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
 function ChooseDestination({ state, dispatch }: Omit<TripPanelProps, 'validity'>) {
-  const [query, setQuery] = useState('');
-  const results = useMemo(() => searchPlaces(query), [query]);
   return (
     <>
       <Text style={styles.title}>¿A dónde vas?</Text>
       <Text style={styles.muted}>
-        Toca el mapa para poner el destino o elige un lugar frecuente.
+        Elige un lugar, un barrio o vereda, o toca el mapa (también un local o establecimiento).
       </Text>
       <OriginHint state={state} />
-      <Field
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Buscar lugar frecuente"
-        autoCorrect={false}
-        accessibilityLabel="Buscar lugar frecuente"
+      <DestinationPicker
+        onPlaceSelected={(place) => dispatch({ type: 'placeSelected', place })}
+        onAreaSelected={(area) => dispatch({ type: 'areaChosen', area })}
       />
-      {results.length === 0 ? (
-        <Text style={styles.muted}>
-          No hay lugares frecuentes con ese nombre. Toca el mapa para elegir el destino.
-        </Text>
-      ) : (
-        results.map((place) => (
-          <Pressable
-            key={place.id}
-            accessibilityRole="button"
-            onPress={() => dispatch({ type: 'placeSelected', place })}
-            style={({ pressed }) => [styles.place, pressed && styles.pressed]}
-          >
-            <MaterialIcons
-              name={
-                place.kind === 'airport'
-                  ? 'flight'
-                  : place.kind === 'park'
-                    ? 'park'
-                    : place.kind === 'town'
-                      ? 'location-city'
-                      : 'terrain'
-              }
-              size={22}
-              color={colors.primary}
-            />
-            <View style={styles.placeText}>
-              <Text style={styles.placeName}>{place.name}</Text>
-              <Text style={styles.small}>
-                {place.description}
-                {place.approximate ? ' · ubicación aproximada' : ''}
-              </Text>
-            </View>
-          </Pressable>
-        ))
-      )}
+    </>
+  );
+}
+
+function PickInArea({ state, dispatch }: Omit<TripPanelProps, 'validity'>) {
+  const pick = state.areaPick;
+  if (!pick) return null;
+  const label = areaLabel(pick.area);
+  return (
+    <>
+      <Text style={styles.title}>Toca el punto exacto dentro del barrio</Text>
+      <Text style={styles.muted}>
+        {`${label} está marcado en el mapa. Toca dentro del croquis el lugar exacto a donde vas.`}
+      </Text>
+      {pick.outside ? (
+        <View style={styles.warning} accessibilityRole="alert">
+          <View style={styles.warningHeader}>
+            <MaterialIcons name="wrong-location" size={20} color={WARNING_TEXT} />
+            <Text style={styles.warningText}>
+              {`Ese punto queda fuera de ${label}. Toca dentro del croquis o elige otro barrio.`}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+      <Button
+        title="Elegir otro barrio o lugar"
+        variant="secondary"
+        onPress={() => dispatch({ type: 'areaPickCancelled' })}
+      />
     </>
   );
 }
@@ -356,17 +380,15 @@ const styles = StyleSheet.create({
   small: { fontSize: 13, color: colors.muted },
   link: { fontSize: 15, fontWeight: '600', color: colors.primary },
   pressed: { opacity: 0.7 },
-  place: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minHeight: 52,
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+  descriptions: {
+    gap: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: 8,
   },
-  placeText: { flex: 1 },
-  placeName: { fontSize: 16, fontWeight: '600', color: colors.text },
+  descriptionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  descriptionLabel: { fontWeight: '700', color: colors.text },
+  dot: { width: 10, height: 10, borderRadius: 5 },
   segment: {
     flexDirection: 'row',
     borderWidth: 1,

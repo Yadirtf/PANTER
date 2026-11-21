@@ -6,6 +6,8 @@
 // - Cámara limitada al área de servicio y centrada en Villagarzón.
 // - Punto de ubicación del usuario, botón "centrar en mi ubicación" y avisos de permiso, GPS
 //   apagado y fuera del área, sin bloquear el mapa.
+// - Con `tapPois`, cada toque consulta las capas de establecimientos y lugares del estilo
+//   (queryRenderedFeatures) y entrega el que tenga nombre (HU-311).
 // Los hijos (fuentes, capas, anotaciones) se dibujan encima del mapa base.
 import { MaterialIcons } from '@expo/vector-icons';
 import {
@@ -13,6 +15,7 @@ import {
   type CameraRef,
   Images,
   Map as MapView,
+  type MapRef,
   NativeUserLocation,
 } from '@maplibre/maplibre-react-native';
 import { type LatLng, PLACES, SERVICE_AREA } from '@panter/contracts';
@@ -32,6 +35,7 @@ import { useMapSource } from '../hooks/use-map-source';
 import { useMapTheme } from '../hooks/use-map-theme';
 import { useUserLocation } from '../hooks/use-user-location';
 import { canCenterOnUser, type LocationStatus, locationNotice } from '../location/location-status';
+import { type MapPoi, POI_TAP_TOLERANCE_PX, poiFromFeatures, TAPPABLE_POI_LAYERS } from '../poi';
 import { mapImages } from './map-images';
 
 /** [oeste, sur, este, norte], el formato de `maxBounds` de maplibre-react-native. */
@@ -57,8 +61,13 @@ export interface PanterMapHandle {
 export interface PanterMapProps {
   mode: 'passenger' | 'driver';
   children?: ReactNode;
-  /** Toque en el mapa (no en una anotación). */
-  onPress?: (point: LatLng) => void;
+  /**
+   * Toque en el mapa (no en una anotación). Con `tapPois`, `poi` es el establecimiento o lugar
+   * con nombre que se tocó, o `null`.
+   */
+  onPress?: (point: LatLng, poi: MapPoi | null) => void;
+  /** Consultar los POI del mapa base y los lugares de PANTER en cada toque. */
+  tapPois?: boolean;
   /** Cada cambio del estado de ubicación del usuario. */
   onLocationChange?: (status: LocationStatus) => void;
   /** Espacio inferior ocupado por paneles: el botón de centrar y los avisos quedan encima. */
@@ -70,6 +79,7 @@ export function PanterMap({
   mode,
   children,
   onPress,
+  tapPois = false,
   onLocationChange,
   bottomInset = 0,
   ref,
@@ -78,6 +88,7 @@ export function PanterMap({
   const { source, online, reload } = useMapSource(mode);
   const location = useUserLocation();
   const camera = useRef<CameraRef>(null);
+  const mapView = useRef<MapRef>(null);
   const [failed, setFailed] = useState(false);
 
   const urls = source && source.kind !== 'unavailable' ? source.urls : null;
@@ -123,6 +134,7 @@ export function PanterMap({
     <View style={styles.flex}>
       {style ? (
         <MapView
+          ref={mapView}
           style={styles.flex}
           mapStyle={style}
           logo={false}
@@ -130,7 +142,27 @@ export function PanterMap({
           attributionPosition={{ bottom: bottomInset + 8, left: 8 }}
           onPress={(event) => {
             const [lng, lat] = event.nativeEvent.lngLat;
-            onPress?.({ lat, lng });
+            const point = { lat, lng };
+            if (!onPress) return;
+            if (!tapPois || !mapView.current) {
+              onPress(point, null);
+              return;
+            }
+            const [x, y] = event.nativeEvent.point;
+            const t = POI_TAP_TOLERANCE_PX;
+            mapView.current
+              .queryRenderedFeatures(
+                [
+                  [x - t, y - t],
+                  [x + t, y + t],
+                ],
+                { layers: [...TAPPABLE_POI_LAYERS] },
+              )
+              .then(
+                (features) => onPress(point, poiFromFeatures(features, point)),
+                // Si la consulta falla (estilo cargando), el toque vale como un punto cualquiera.
+                () => onPress(point, null),
+              );
           }}
           onDidFailLoadingMap={() => setFailed(true)}
           onDidFinishLoadingMap={() => setFailed(false)}

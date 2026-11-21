@@ -1,16 +1,22 @@
 // Flujo de selección del pasajero (HU-404) como reducer puro:
-// origen (GPS o pin arrastrado) → destino (toque + "Confirmar destino", o lugar frecuente) →
-// vehículo → POST /fares/estimate → precio con vigencia, o error en español.
+// origen (GPS o pin arrastrado) → destino → vehículo → POST /fares/estimate → precio con
+// vigencia, o error en español. El destino (HU-311) sale de:
+// - un toque en el mapa, o en un establecimiento con nombre del mapa base, + "Confirmar destino";
+// - un lugar del catálogo (su punto de recogida si lo tiene);
+// - un barrio o vereda: se dibuja su croquis y se toca el punto exacto dentro de él.
 import {
+  type Area,
   decodePolyline,
   type FareEstimateBody,
   type FareEstimateResponse,
   isInServiceArea,
   type LatLng,
+  type Place,
   PLACES,
   VehicleType,
 } from '@panter/contracts';
-import type { FrequentPlace } from '../places/frequent-places';
+import { areaLabel, isInsideArea, placeDestinationPoint } from '../../catalog/selection';
+import type { MapPoi } from '../../map/poi';
 import { estimateErrorView, type EstimateErrorView } from './estimate-errors';
 import {
   type AcceptedSnaps,
@@ -33,9 +39,27 @@ export interface Origin {
 
 export interface Destination {
   point: LatLng;
-  /** Nombre del lugar frecuente, o `null` si se eligió tocando el mapa. */
+  /**
+   * Nombre del lugar del catálogo, del establecimiento tocado o del barrio ("Barrio Centro"), o
+   * `null` si se eligió tocando un punto cualquiera del mapa.
+   */
   name: string | null;
+  /** Id del lugar del catálogo, si salió de ahí. */
   placeId: string | null;
+}
+
+/** Destino tocado en el mapa, pendiente de "Confirmar destino". */
+export interface Candidate {
+  point: LatLng;
+  /** Nombre del establecimiento tocado o del barrio en el que se ubicó. */
+  name: string | null;
+}
+
+/** Barrio o vereda elegido: se dibuja su croquis y se espera el toque dentro de él. */
+export interface AreaPick {
+  area: Area;
+  /** El último toque cayó fuera del croquis. */
+  outside: boolean;
 }
 
 export type QuoteState =
@@ -63,7 +87,9 @@ export type QuoteState =
 export interface PlannerState {
   origin: Origin;
   /** Pin tocado en el mapa, pendiente de "Confirmar destino". */
-  candidate: LatLng | null;
+  candidate: Candidate | null;
+  /** Barrio elegido para ubicar el destino dentro de él (HU-311). */
+  areaPick: AreaPick | null;
   destination: Destination | null;
   vehicle: QuotableVehicle;
   quote: QuoteState;
@@ -77,10 +103,13 @@ export interface PlannerState {
 export type PlannerAction =
   | { type: 'userLocated'; point: LatLng }
   | { type: 'originDragged'; point: LatLng }
-  | { type: 'mapPressed'; point: LatLng }
+  /** Toque en el mapa; `poi` es el establecimiento o lugar con nombre que se tocó, si hay. */
+  | { type: 'mapPressed'; point: LatLng; poi?: MapPoi | null }
   | { type: 'candidateConfirmed' }
   | { type: 'candidateCancelled' }
-  | { type: 'placeSelected'; place: FrequentPlace }
+  | { type: 'placeSelected'; place: Pick<Place, 'id' | 'name' | 'location' | 'pickupPoint'> }
+  | { type: 'areaChosen'; area: Area }
+  | { type: 'areaPickCancelled' }
   | { type: 'vehicleSelected'; vehicle: QuotableVehicle }
   | { type: 'retry' }
   | { type: 'quoteExpired' }
@@ -96,6 +125,7 @@ export function initialPlannerState(): PlannerState {
   return {
     origin: { point: PLACES.VILLAGARZON_CENTER, source: 'default' },
     candidate: null,
+    areaPick: null,
     destination: null,
     vehicle: VehicleType.MOTOTAXI,
     quote: { status: 'none' },
@@ -148,8 +178,29 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       const next = { ...state, origin: { point: action.point, source: 'manual' as const } };
       return next.destination ? requestQuote({ ...next, autoRenewed: false }) : next;
     }
-    case 'mapPressed':
-      return { ...state, candidate: action.point };
+    case 'mapPressed': {
+      const { areaPick } = state;
+      const poi = action.poi ?? null;
+      if (areaPick) {
+        // Dentro del barrio elegido: ese es el punto exacto (con el nombre del establecimiento
+        // si se tocó uno). Fuera: se avisa y el pin no se mueve.
+        if (!isInsideArea(action.point, areaPick.area)) {
+          return { ...state, areaPick: { ...areaPick, outside: true } };
+        }
+        const named = poi && isInsideArea(poi.point, areaPick.area) ? poi : null;
+        return {
+          ...state,
+          areaPick: { ...areaPick, outside: false },
+          candidate: named
+            ? { point: named.point, name: named.name }
+            : { point: action.point, name: areaLabel(areaPick.area) },
+        };
+      }
+      return {
+        ...state,
+        candidate: poi ? { point: poi.point, name: poi.name } : { point: action.point, name: null },
+      };
+    }
     case 'candidateCancelled':
       return { ...state, candidate: null };
     case 'candidateConfirmed': {
@@ -157,7 +208,8 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       return requestQuote({
         ...state,
         candidate: null,
-        destination: { point: state.candidate, name: null, placeId: null },
+        areaPick: null,
+        destination: { point: state.candidate.point, name: state.candidate.name, placeId: null },
         autoRenewed: false,
       });
     }
@@ -165,13 +217,24 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       return requestQuote({
         ...state,
         candidate: null,
+        areaPick: null,
         destination: {
-          point: action.place.position,
+          point: placeDestinationPoint(action.place),
           name: action.place.name,
           placeId: action.place.id,
         },
         autoRenewed: false,
       });
+    case 'areaChosen':
+      return {
+        ...state,
+        candidate: null,
+        destination: null,
+        quote: { status: 'none' },
+        areaPick: { area: action.area, outside: false },
+      };
+    case 'areaPickCancelled':
+      return { ...state, candidate: null, areaPick: null };
     case 'vehicleSelected': {
       if (action.vehicle === state.vehicle) return state;
       return requestQuote({ ...state, vehicle: action.vehicle, autoRenewed: false });
@@ -213,6 +276,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       return {
         ...state,
         candidate: null,
+        areaPick: null,
         destination: null,
         quote: { status: 'none' },
         autoRenewed: false,
@@ -268,10 +332,11 @@ export function pendingRequest(
 }
 
 /** Paso visible del panel inferior. */
-export type PlannerStep = 'choose-destination' | 'confirm-destination' | 'quote';
+export type PlannerStep = 'choose-destination' | 'pick-in-area' | 'confirm-destination' | 'quote';
 
 export function plannerStep(state: PlannerState): PlannerStep {
   if (state.candidate) return 'confirm-destination';
+  if (state.areaPick) return 'pick-in-area';
   if (!state.destination) return 'choose-destination';
   return 'quote';
 }

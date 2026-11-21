@@ -1,6 +1,10 @@
-// Mapa del pasajero con el estimado (HU-404): toca el mapa o elige un lugar frecuente, cambia el
-// origen arrastrando el pin verde y mira la ruta, el precio y su desglose.
+// Mapa del pasajero con el estimado (HU-404): elige el destino por lugar, barrio o vereda, o
+// tocando el mapa o un establecimiento del mapa base (HU-311); cambia el origen arrastrando el pin
+// verde y mira la ruta, el precio, su desglose y los avisos de calidad de la ruta (HU-307).
 import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
+import { AreaOutlineLayer } from '../../catalog/components/area-outline-layer';
+import { catalogRepository } from '../../catalog/instance';
+import { areaFramePoints, resolveCatalogPoi } from '../../catalog/selection';
 import { MapHomeLayout } from '../../map/components/map-home-layout';
 import { PanterMap, type PanterMapHandle } from '../../map/components/panter-map';
 import type { LocationStatus } from '../../map/location/location-status';
@@ -27,7 +31,13 @@ export function TripPlanner({ top }: { top: ReactNode }) {
     if (route && route.length > 1) map.current?.fitPoints(route, 80);
   }, [route]);
 
-  const destination = state.candidate ?? state.destination?.point ?? null;
+  // Encuadra el croquis del barrio o vereda elegido.
+  const area = state.areaPick?.area ?? null;
+  useEffect(() => {
+    if (area) map.current?.fitPoints(areaFramePoints(area), 60);
+  }, [area]);
+
+  const destination = state.candidate?.point ?? state.destination?.point ?? null;
 
   // Avisos de HU-307 sobre el mapa: punto de la vía y línea recta de referencia.
   const notices = useMemo(() => plannerRouteNotices(state), [state]);
@@ -55,8 +65,23 @@ export function TripPlanner({ top }: { top: ReactNode }) {
           mode="passenger"
           bottomInset={bottomInset}
           onLocationChange={onLocationChange}
-          onPress={(point) => dispatch({ type: 'mapPressed', point })}
+          tapPois
+          onPress={(point, poi) => {
+            if (!poi?.placeSlug) {
+              dispatch({ type: 'mapPressed', point, poi });
+              return;
+            }
+            // Punto clave de PANTER: se usa el lugar del catálogo (ubicación real).
+            catalogRepository.knownPlaces().then(
+              (places) =>
+                dispatch({ type: 'mapPressed', point, poi: resolveCatalogPoi(poi, places) }),
+              () => dispatch({ type: 'mapPressed', point, poi }),
+            );
+          }}
         >
+          {state.areaPick ? (
+            <AreaOutlineLayer area={state.areaPick.area} warning={state.areaPick.outside} />
+          ) : null}
           <TripMapLayers
             origin={state.origin.point}
             onOriginDragged={(point) => dispatch({ type: 'originDragged', point })}

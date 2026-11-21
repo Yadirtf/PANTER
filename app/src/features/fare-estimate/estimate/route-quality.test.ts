@@ -7,7 +7,7 @@ import {
   SNAP_WARNING_METERS,
 } from '@panter/contracts';
 import { describe, expect, it } from 'vitest';
-import { FREQUENT_PLACES } from '../places/frequent-places';
+import { makePlace } from '../../catalog/test-helpers';
 import { makeEstimate } from '../test-helpers';
 import {
   initialPlannerState,
@@ -128,7 +128,7 @@ describe('routeNotices (HU-307)', () => {
 });
 
 describe('avisos en el flujo del estimado', () => {
-  const airport = FREQUENT_PLACES.find((p) => p.id === 'aeropuerto-cananguchal')!;
+  const airport = makePlace();
   const run = (...actions: PlannerAction[]) =>
     actions.reduce<PlannerState>(plannerReducer, initialPlannerState());
 
