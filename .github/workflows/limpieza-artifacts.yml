@@ -1,0 +1,59 @@
+name: Limpieza de artifacts
+
+# Borra los artifacts de Actions con más de 2 días (APK de staging y de debug). Los uploads ya
+# usan retention-days: 2; esta limpieza diaria cubre los artifacts creados antes de ese cambio y
+# cualquier workflow futuro que olvide fijar la retención. Las versiones oficiales viven en
+# GitHub Releases (app.yml) y no se tocan.
+on:
+  schedule:
+    # 08:17 UTC = 03:17 hora de Colombia.
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: Borrar artifacts con más de estos días
+        type: number
+        default: 2
+
+permissions:
+  actions: write
+
+concurrency:
+  group: limpieza-artifacts
+  cancel-in-progress: false
+
+jobs:
+  limpiar:
+    name: Borrar artifacts antiguos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Borrar artifacts con más de N días
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MAX_AGE_DAYS: ${{ inputs.max_age_days || 2 }}
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d "-${MAX_AGE_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)
+          echo "Borrando artifacts creados antes de ${cutoff}"
+          deleted=0
+          freed=0
+          # Los artifacts más antiguos quedan al final de la lista: se recorren todas las páginas.
+          while IFS=$'\t' read -r id name size created; do
+            [ -n "$id" ] || continue
+            if [[ "$created" < "$cutoff" ]]; then
+              gh api -X DELETE "repos/${REPO}/actions/artifacts/${id}" </dev/null
+              echo "  borrado ${name} (${created})"
+              deleted=$((deleted + 1))
+              freed=$((freed + size))
+            fi
+          done < <(gh api --paginate "repos/${REPO}/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.expired | not) | [.id, .name, .size_in_bytes, .created_at] | @tsv')
+          mb=$((freed / 1048576))
+          echo "Borrados ${deleted} artifacts (${mb} MB)."
+          {
+            echo "### Limpieza de artifacts"
+            echo
+            echo "Borrados **${deleted}** artifacts con más de ${MAX_AGE_DAYS} días (${mb} MB)."
+          } >> "$GITHUB_STEP_SUMMARY"
