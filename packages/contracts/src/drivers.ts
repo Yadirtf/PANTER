@@ -81,6 +81,19 @@ export function isValidPlateFor(vehicleType: VehicleType, plate: string): boolea
     : CAR_PLATE_REGEX.test(plate);
 }
 
+/** Año del modelo más antiguo aceptado. */
+export const MIN_VEHICLE_YEAR = 1980;
+
+/**
+ * Año del modelo más reciente aceptado: el año siguiente al actual (los concesionarios venden
+ * modelos del año próximo). Se calcula al validar, nunca al cargar el módulo: en Cloudflare
+ * Workers el reloj vale 1970 durante la carga del script, así que `new Date()` en el ámbito
+ * global dejaba el máximo en 1971 y rechazaba cualquier vehículo real (VALIDATION_ERROR).
+ */
+export function maxVehicleYear(now: Date = new Date()): number {
+  return now.getUTCFullYear() + 1;
+}
+
 export const VehicleSchema = z.object({
   vehicleType: VehicleTypeSchema,
   plate: z.string(),
@@ -90,8 +103,10 @@ export const VehicleSchema = z.object({
   year: z
     .number()
     .int()
-    .min(1980)
-    .max(new Date().getUTCFullYear() + 1),
+    .min(MIN_VEHICLE_YEAR)
+    .refine((year) => year <= maxVehicleYear(), {
+      error: () => `El año del modelo no puede ser mayor que ${maxVehicleYear()}`,
+    }),
 });
 
 // POST /drivers/apply
