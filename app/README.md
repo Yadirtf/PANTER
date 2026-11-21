@@ -123,6 +123,7 @@ Organizado por funcionalidad en `src/`:
 | `navigation/`             | `resolveRootGroup`: grupo de rutas según la sesión                                                |
 | `features/map/`           | `<PanterMap>` (HU-303): mapa base, ubicación y mapa sin señal del conductor                       |
 | `features/fare-estimate/` | Destino, vehículo y estimado del pasajero con `POST /fares/estimate` (HU-404)                     |
+| `features/catalog/`       | Barrios, veredas y lugares de la API con copia en el teléfono y descripción de puntos (HU-311)    |
 
 - Todo error llega a la interfaz como `{ code, message }`; sin red el código es
   `NETWORK_ERROR`. Los textos en español están en `shared/api/error-messages.ts`.
@@ -190,10 +191,26 @@ pruebas en Vitest; los adaptadores de Expo están en `src/features/map/native/`.
 
 En el modo pasajero (`src/features/fare-estimate/`):
 
-- **Destino:** se toca el mapa (pin rojo + "Confirmar destino") o se elige en "Lugares
-  frecuentes": los puntos clave de `@panter/map-style` (aeropuerto, parque y sitios turísticos) y
-  los centros de Mocoa y Puerto Asís de `PLACES`, con búsqueda local sin tildes. No se usan
-  geocodificadores externos. Los lugares con coordenada estimada dicen "ubicación aproximada".
+- **Destino** ("¿A dónde vas?", HU-311), sin geocodificadores externos:
+  - **Lugares:** catálogo de `GET /places` con buscador sin tildes (`searchKey`) y categorías
+    (`PLACE_CATEGORY_LABELS`); los no verificados llevan la insignia "Ubicación aproximada". El
+    destino es su `pickupPoint` si lo tiene; si no, su `location`. De `@panter/map-style` solo se
+    usan los íconos.
+  - **Barrios y veredas:** `GET /areas` agrupado por tipo; al elegir uno, `GET /areas/:id` dibuja
+    su croquis y la cámara lo encuadra; se toca el punto exacto dentro (`pointInPolygon`) y, si se
+    toca fuera, se avisa.
+  - **Tocar el mapa:** un punto cualquiera, o un establecimiento con nombre del mapa base
+    (`queryRenderedFeatures` sobre las capas `pois` de Protomaps y `panter-places`), que se toma con
+    su nombre. Siempre con "Confirmar destino".
+  - La última respuesta de `/areas`, `/places` y de cada croquis consultado queda en
+    `<documentos>/catalog/` para usarla sin señal.
+- **Descripción** de recogida y destino siempre visible: "Barrio Centro · cerca de Parque
+  principal" (`GET /areas/locate`, `GET /places/nearby` y `describeLocation`), con debounce de
+  600 ms y caché por coordenada redondeada a 4 decimales; sin señal, con la copia del catálogo.
+- **Calidad de la ruta (HU-307):** si `route.quality` dice que el origen o el destino quedaron a
+  más de 50 m de la vía, se avisa, se marca en el mapa el punto donde empieza o termina la ruta y
+  se ofrece "Mover el pin a la vía" o "Está bien así". Si la ruta es inusual, se avisa y se dibuja
+  la línea recta punteada. Sin `quality`, nada cambia.
 - **Origen:** la ubicación actual (dentro del área de servicio); el pin verde se arrastra para
   cambiarlo. Sin GPS, el origen es el parque principal hasta que se mueva el pin.
 - **Vehículo:** mototaxi o taxi; el 4x4 aparece como "Próximamente".

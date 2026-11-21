@@ -1,6 +1,6 @@
 import { PLACES } from '@panter/contracts';
 import { describe, expect, it } from 'vitest';
-import { FREQUENT_PLACES } from '../places/frequent-places';
+import { makePlace } from '../../catalog/test-helpers';
 import { makeEstimate } from '../test-helpers';
 import {
   initialPlannerState,
@@ -13,7 +13,7 @@ import {
 
 const GPS = { lat: 1.031, lng: -76.618 };
 const TAP = { lat: 1.02, lng: -76.61 };
-const airport = FREQUENT_PLACES.find((p) => p.id === 'aeropuerto-cananguchal')!;
+const airport = makePlace();
 
 const run = (...actions: PlannerAction[]) =>
   actions.reduce<PlannerState>(plannerReducer, initialPlannerState());
@@ -63,7 +63,7 @@ describe('flujo del estimado', () => {
     expect(plannerStep(state)).toBe('choose-destination');
   });
 
-  it('un lugar frecuente se cotiza de inmediato con su nombre', () => {
+  it('un lugar del catálogo se cotiza de inmediato con su nombre', () => {
     const state = run({ type: 'placeSelected', place: airport });
     expect(state.destination).toMatchObject({ name: 'Aeropuerto Cananguchal' });
     expect(pendingRequest(state)?.body.destination).toEqual(PLACES.AIRPORT_VGZ);
