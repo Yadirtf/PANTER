@@ -2,8 +2,10 @@
 // actor debe ser ADMIN en la "base de datos", nombre único por tipo sin tildes, ST_IsValid
 // simulado, historial solo con cambios reales y el de menor área gana en `locate`.
 import {
+  haversineMeters,
   pointInPolygon,
   type Area,
+  type Place,
   type CatalogChange,
   type LatLng,
   type PolygonRings,
@@ -17,6 +19,12 @@ import type {
   AreaWriteResult,
   CatalogChangeRepository,
   ImportCheck,
+  NearbyFilter,
+  PlaceDraft,
+  PlaceListFilter,
+  PlacePatch,
+  PlaceRepository,
+  PlaceWriteResult,
 } from '../../src/modules/catalog/application/ports';
 import type { HistoryCursor } from '../../src/modules/catalog/domain/history-cursor';
 
@@ -182,6 +190,20 @@ export class MemoryAreaRepository implements AreaRepository {
     return { ...rest, polygon: rest.polygon.map((r) => [...r]) };
   }
 
+  async getMany(ids: readonly string[]): Promise<Area[]> {
+    this.reads++;
+    const out: Area[] = [];
+    for (const id of ids) {
+      const row = this.rows.get(id);
+      if (row) {
+        const { nameSearch: _omit, ...rest } = row;
+        void _omit;
+        out.push(rest);
+      }
+    }
+    return out;
+  }
+
   async locate(point: LatLng) {
     this.reads++;
     const hit = [...this.rows.values()]
@@ -289,5 +311,151 @@ export class MemoryAreaRepository implements AreaRepository {
       });
     }
     return { actorIsAdmin: true, saved: items.length };
+  }
+}
+
+interface StoredPlace extends Place {
+  nameSearch: string;
+}
+
+/** Lugares en memoria; el barrio sale de `areas.locate`, como el ST_Covers del repositorio real. */
+export class MemoryPlaceRepository implements PlaceRepository {
+  readonly rows = new Map<string, StoredPlace>();
+  reads = 0;
+  private seq = 0;
+
+  constructor(
+    readonly areas: MemoryAreaRepository,
+    readonly changes: MemoryCatalogChanges = areas.changes,
+  ) {}
+
+  seed(slug: string, name: string, location: LatLng, extra: Partial<Place> = {}): string {
+    const id = `b0000000-0000-4000-8000-${String(++this.seq).padStart(12, '0')}`;
+    this.rows.set(id, {
+      id,
+      slug,
+      name,
+      nameSearch: key(name),
+      category: 'OTHER',
+      location,
+      pickupPoint: null,
+      area: null,
+      verified: false,
+      active: true,
+      source: null,
+      updatedAt: AT,
+      ...extra,
+    });
+    return id;
+  }
+
+  private view({ nameSearch: _omit, ...rest }: StoredPlace): Place {
+    void _omit;
+    return rest;
+  }
+
+  private snapshot(p: StoredPlace) {
+    return {
+      slug: p.slug,
+      name: p.name,
+      category: p.category,
+      location: p.location,
+      pickupPoint: p.pickupPoint,
+      areaId: p.area?.id ?? null,
+      verified: p.verified,
+      active: p.active,
+      source: p.source,
+    };
+  }
+
+  private base(actorId: string): PlaceWriteResult {
+    return {
+      actorIsAdmin: this.areas.admins.has(actorId),
+      exists: true,
+      slugTaken: false,
+      id: null,
+      changed: false,
+    };
+  }
+
+  async list({ search, category, includeInactive, limit }: PlaceListFilter) {
+    this.reads++;
+    return [...this.rows.values()]
+      .filter((p) => (includeInactive || p.active) && (!category || p.category === category))
+      .filter((p) => p.nameSearch.includes(search ?? ''))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, limit)
+      .map((p) => this.view(p));
+  }
+
+  async nearby({ point, radiusMeters, limit }: NearbyFilter) {
+    this.reads++;
+    return [...this.rows.values()]
+      .filter((p) => p.active)
+      .map((p) => ({
+        ...this.view(p),
+        distanceMeters: Math.round(haversineMeters(point, p.location)),
+      }))
+      .filter((p) => p.distanceMeters <= radiusMeters)
+      .sort((a, b) => a.distanceMeters - b.distanceMeters)
+      .slice(0, limit);
+  }
+
+  async get(id: string) {
+    const row = this.rows.get(id);
+    return row ? this.view(row) : null;
+  }
+
+  async create({ actorId, place }: { actorId: string; place: PlaceDraft }) {
+    const result = this.base(actorId);
+    if (!result.actorIsAdmin) return result;
+    if ([...this.rows.values()].some((p) => p.slug === place.slug)) {
+      return { ...result, slugTaken: true };
+    }
+    const id = this.seed(place.slug, place.name, place.location, {
+      category: place.category,
+      pickupPoint: place.pickupPoint,
+      verified: place.verified,
+      source: place.source,
+      area: await this.areas.locate(place.location),
+    });
+    this.changes.record({
+      entity: 'PLACE',
+      entityId: id,
+      action: 'CREATE',
+      before: null,
+      after: this.snapshot(this.rows.get(id)!),
+      changedBy: this.areas.emails.get(actorId) ?? null,
+    });
+    return { ...result, id, changed: true };
+  }
+
+  async update({ id, actorId, patch }: { id: string; actorId: string; patch: PlacePatch }) {
+    const result = { ...this.base(actorId), id };
+    const old = this.rows.get(id);
+    if (!old) return { ...result, exists: false };
+    if (!result.actorIsAdmin) return result;
+    const next: StoredPlace = {
+      ...old,
+      ...(patch.name === undefined ? {} : { name: patch.name, nameSearch: patch.nameSearch! }),
+      ...(patch.category === undefined ? {} : { category: patch.category }),
+      ...(patch.location === undefined ? {} : { location: patch.location }),
+      ...(patch.pickupPoint === undefined ? {} : { pickupPoint: patch.pickupPoint }),
+      ...(patch.verified === undefined ? {} : { verified: patch.verified }),
+      ...(patch.source === undefined ? {} : { source: patch.source }),
+      ...(patch.active === undefined ? {} : { active: patch.active }),
+    };
+    next.area = await this.areas.locate(next.location);
+    if (JSON.stringify(this.snapshot(old)) === JSON.stringify(this.snapshot(next))) return result;
+    this.rows.set(id, next);
+    this.changes.record({
+      entity: 'PLACE',
+      entityId: id,
+      action: 'UPDATE',
+      before: this.snapshot(old),
+      after: this.snapshot(next),
+      changedBy: this.areas.emails.get(actorId) ?? null,
+    });
+    return { ...result, changed: true };
   }
 }

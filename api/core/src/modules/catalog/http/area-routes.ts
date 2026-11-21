@@ -1,5 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import {
+  AREA_IDS_MAX,
   AREA_IMPORT_MAX_FEATURES,
   AreaCreateBodySchema,
   AreaImportBodySchema,
@@ -10,6 +11,7 @@ import {
   AreaSchema,
   AreasQuerySchema,
   AreasResponseSchema,
+  AreasWithPolygonResponseSchema,
   AreaUpdateBodySchema,
   CatalogHistoryResponseSchema,
   LocateQuerySchema,
@@ -73,6 +75,16 @@ const ListQuery = z.object({
   q: z.string().max(80).optional().openapi({ example: 'pozo azul' }),
   kind: AreaKindSchema.optional(),
   includeInactive: BooleanQuery,
+  ids: z
+    .string()
+    .max(AREA_IDS_MAX * 37)
+    .optional()
+    .openapi({
+      description: `Solo estos barrios o veredas: ids separados por comas (máx. ${AREA_IDS_MAX})`,
+    }),
+  include: z.literal('polygon').optional().openapi({
+    description: 'Con `ids`: cada item trae polígono y centro (AreaSchema)',
+  }),
 });
 
 const LocateQuery = z.object({
@@ -103,11 +115,16 @@ export function areaRoutes(
     summary: 'Barrios y veredas',
     description:
       'Sin polígono, ordenados por tipo y nombre. `q` busca sin tildes ni mayúsculas ' +
-      '("pozo azul" encuentra "Pozo Azul"). `includeInactive=true` solo con token de ADMIN.',
+      '("pozo azul" encuentra "Pozo Azul"). `includeInactive=true` solo con token de ADMIN. ' +
+      `Con \`ids\` (máx. ${AREA_IDS_MAX}) e \`include=polygon\`, varios con su polígono en una ` +
+      'sola consulta (para dibujarlos todos sin pedir uno por uno).',
     middleware: [optionalAuth(requireAuth)],
     request: { query: ListQuery },
     responses: {
-      200: { description: 'Barrios y veredas', content: json(AreasResponseSchema) },
+      200: {
+        description: 'Barrios y veredas (con polígono si se pidió include=polygon)',
+        content: json(z.union([AreasWithPolygonResponseSchema, AreasResponseSchema])),
+      },
       400: error('VALIDATION_ERROR'),
       ...commonErrors,
     },

@@ -4,6 +4,8 @@ import type {
   AreaSummary,
   CatalogChange,
   LatLng,
+  Place,
+  PlaceCategory,
   PolygonRings,
 } from '@panter/contracts';
 import type { HistoryCursor } from '../domain/history-cursor';
@@ -23,6 +25,8 @@ export interface AreaReader {
   list(filter: AreaListFilter): Promise<AreaSummary[]>;
   /** Con polígono y centro (`ST_PointOnSurface`); `updatedBy` es el correo de quien editó. */
   get(id: string): Promise<Area | null>;
+  /** Varios con polígono y centro en una sola consulta (`GET /areas?ids=…&include=polygon`). */
+  getMany(ids: readonly string[]): Promise<Area[]>;
   /**
    * Barrio o vereda activo que cubre el punto (`ST_Covers`, el borde cuenta como dentro). Si
    * varios se solapan, el de menor área (un barrio dentro de una vereda gana la vereda).
@@ -102,6 +106,72 @@ export interface AreaRepository extends AreaReader {
     source: string | null;
     items: AreaImportItem[];
   }): Promise<{ actorIsAdmin: boolean; saved: number }>;
+}
+
+// --- Lugares de interés (HU-310) ---
+
+export interface PlaceListFilter {
+  /** `searchKey` del texto buscado; vacío = sin filtro. */
+  search?: string;
+  category?: PlaceCategory;
+  includeInactive: boolean;
+  limit: number;
+}
+
+export interface NearbyFilter {
+  point: LatLng;
+  radiusMeters: number;
+  limit: number;
+}
+
+/** Puerto de lectura de `places` (público; puede ir en caché del isolate). */
+export interface PlaceReader {
+  /** Ordenados por nombre, cada uno con su barrio o vereda (join con `areas`). */
+  list(filter: PlaceListFilter): Promise<Place[]>;
+  /** Activos a menos de `radiusMeters` (`ST_DWithin`), del más cercano al más lejano. */
+  nearby(filter: NearbyFilter): Promise<(Place & { distanceMeters: number })[]>;
+  get(id: string): Promise<Place | null>;
+}
+
+export interface PlaceDraft {
+  slug: string;
+  name: string;
+  nameSearch: string;
+  category: PlaceCategory;
+  location: LatLng;
+  pickupPoint: LatLng | null;
+  verified: boolean;
+  source: string | null;
+}
+
+/** Cambios de una edición: lo que no viene se conserva (`null` borra recogida o fuente). */
+export interface PlacePatch {
+  name?: string;
+  nameSearch?: string;
+  category?: PlaceCategory;
+  location?: LatLng;
+  pickupPoint?: LatLng | null;
+  verified?: boolean;
+  source?: string | null;
+  active?: boolean;
+}
+
+/**
+ * Resultado de crear o editar un lugar en una sola sentencia (con el historial y `area_id`
+ * calculado con `ST_Covers`): mismo sentido que `AreaWriteResult`, con `slugTaken`.
+ */
+export interface PlaceWriteResult {
+  actorIsAdmin: boolean;
+  exists: boolean;
+  slugTaken: boolean;
+  id: string | null;
+  changed: boolean;
+}
+
+/** Puerto: `places` en PostGIS. */
+export interface PlaceRepository extends PlaceReader {
+  create(input: { actorId: string; place: PlaceDraft }): Promise<PlaceWriteResult>;
+  update(input: { id: string; actorId: string; patch: PlacePatch }): Promise<PlaceWriteResult>;
 }
 
 // --- Historial común ---

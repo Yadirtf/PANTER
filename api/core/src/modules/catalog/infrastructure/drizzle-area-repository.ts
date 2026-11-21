@@ -95,7 +95,7 @@ const geomCte = (ewkt: string | null) => sql`
  *   comprueba el nombre, escribe, registra en `catalog_changes` y recalcula `places.area_id`.
  */
 export function createDrizzleAreaRepository(db: AnyPgDatabase): AreaRepository {
-  async function select(where: SQL): Promise<Area | null> {
+  async function select(where: SQL): Promise<Area[]> {
     const rows = rowsOf<AreaRow>(
       await db.execute(sql`
         SELECT a.id, a.name, a.kind, a.active, a.source,
@@ -109,16 +109,14 @@ export function createDrizzleAreaRepository(db: AnyPgDatabase): AreaRepository {
         WHERE ${where}
       `),
     );
-    const r = rows[0];
-    if (!r) return null;
-    return {
+    return rows.map((r) => ({
       ...summary(r),
       polygon: parsePolygon(r.polygon),
       source: r.source,
       center: { lat: Number(r.lat), lng: Number(r.lng) },
       updatedAt: r.updatedAt,
       updatedBy: r.updatedBy,
-    };
+    }));
   }
 
   return {
@@ -133,7 +131,12 @@ export function createDrizzleAreaRepository(db: AnyPgDatabase): AreaRepository {
       return rowsOf<SummaryRow>(rows).map(summary);
     },
 
-    get: (id) => select(sql`a.id = ${id}::uuid`),
+    get: async (id) => (await select(sql`a.id = ${id}::uuid`))[0] ?? null,
+
+    getMany: (ids) =>
+      ids.length === 0
+        ? Promise.resolve([])
+        : select(sql`a.id = ANY(${`{${ids.join(',')}}`}::uuid[])`),
 
     async locate(point) {
       const rows = await db.execute(sql`
