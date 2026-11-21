@@ -5,3 +5,4 @@ export * from './role-audit';
 export * from './user-consents';
 export * from './drivers';
 export * from './fares';
+export * from './catalog';

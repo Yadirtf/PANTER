@@ -11,3 +11,4 @@ export * from './drivers';
 export * from './fares';
 export * from './routes';
 export * from './events';
+export * from './catalog';

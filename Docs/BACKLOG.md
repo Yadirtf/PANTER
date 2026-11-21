@@ -667,6 +667,55 @@ Como responsable quiero cerrar la Fase 1 con una versión estable documentada.
 - [ ] Especificación actualizada con lo aprendido
 - [ ] Épicas de la Fase 2 detalladas en historias
 
+## E15 · Barrios, lugares y calidad de rutas (M2 y M4)
+
+Que quien recoge sepa exactamente a qué barrio, vereda o lugar va, y que la ruta y el precio usen siempre el camino más corto. Surge de la validación de M2 en staging. Va antes de HU-602; HU-307 se adelanta a M3.
+
+### HU-307 · Ruta más corta y calidad de rutas (#129)
+Área: api, app · Prioridad: alta · Depende de: HU-305, HU-404
+
+Como pasajero o conductor quiero que la ruta y el precio usen siempre el camino más corto, y enterarme si mi punto de recogida quedó lejos de la vía.
+
+- [ ] ORS con preference shortest y hasta 3 alternativas en una sola consulta; la API elige la de menor distancia
+- [ ] Respuesta con el ajuste a la vía de origen y destino; la app avisa si supera 50 m
+- [ ] Ruta inusual (más de 2,5 veces la línea recta y al menos 1 km) marcada, registrada en el log y avisada en la app
+- [ ] Caché de rutas versionada por criterio
+
+### HU-308 · Barrios y veredas con polígono (#130)
+Área: api, contracts · Prioridad: alta · Depende de: HU-306, HU-401
+
+Como plataforma quiero conocer los barrios urbanos y las veredas con su límite, para indicar a qué sector va cada viaje.
+
+- [ ] Tabla areas (BARRIO | VEREDA, polígono, GIST) y GET /areas, /areas/:id y /areas/locate
+- [ ] Administración con historial e importación GeoJSON con vista previa de errores
+- [ ] Pruebas de integración con PostGIS
+
+### HU-309 · Editor de barrios y veredas en la web (#131)
+Área: web · Prioridad: alta · Depende de: HU-304, HU-308
+
+Como administrador quiero dibujar, corregir e importar los barrios y veredas sobre el mapa.
+
+- [ ] /admin/barrios con lista, mapa y editor de polígonos (reutiliza el de HU-304)
+- [ ] Importar GeoJSON con vista previa, "Probar un punto" e historial
+
+### HU-310 · Lugares de interés con ubicación real (#132)
+Área: api, web · Prioridad: alta · Depende de: HU-302, HU-304
+
+Como administrador quiero mantener el catálogo de lugares con su ubicación real.
+
+- [ ] Tabla places (categoría, punto, punto de recogida, barrio calculado, verificado) y GET /places y /places/nearby
+- [ ] /admin/lugares para crear y editar sobre el mapa, con historial
+- [ ] Los puntos clave pasan del código al catálogo; los clientes lo leen de la API
+
+### HU-311 · Elegir destino por barrio, lugar o establecimiento (#133)
+Área: app · Prioridad: alta · Depende de: HU-404, HU-307, HU-308, HU-310
+
+Como pasajero quiero elegir mi destino por barrio, lugar conocido o tocando un local en el mapa, para que el conductor sepa exactamente a dónde llevarme.
+
+- [ ] Lista de barrios y veredas con buscador y croquis del barrio
+- [ ] Lugares del catálogo y establecimientos del mapa base como destino
+- [ ] Origen y destino descritos como "Barrio X · cerca de Y"
+
 ## Fase 2 (épicas sin historias)
 
 - E12 · Portal ecoturístico y reservas 4x4: Catálogo de destinos, cotización y reserva de camperos (RF-07).
