@@ -139,3 +139,22 @@ export function formatLatLng(point: { lat: number; lng: number }): string {
   const fmt = (n: number) => n.toFixed(5).replace('.', ',').replace('-', '−');
   return `${fmt(point.lat)}; ${fmt(point.lng)}`;
 }
+
+/** Caja [[oeste, sur], [este, norte]] de unos puntos (para centrar el mapa); `null` si no hay. */
+export function boundsOf(points: readonly LatLng[]): [[number, number], [number, number]] | null {
+  if (points.length === 0) return null;
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  for (const p of points) {
+    west = Math.min(west, p.lng);
+    east = Math.max(east, p.lng);
+    south = Math.min(south, p.lat);
+    north = Math.max(north, p.lat);
+  }
+  return [
+    [west, south],
+    [east, north],
+  ];
+}
