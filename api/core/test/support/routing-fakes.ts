@@ -7,22 +7,48 @@ import type {
   RouteRateStore,
   RouteRequest,
   RoutingLog,
+  UnusualRouteLog,
 } from '../../src/modules/routing/application/ports';
-import type { RateWindow, Route } from '../../src/modules/routing/domain/route';
+import type { ProviderRoute, RateWindow, Route } from '../../src/modules/routing/domain/route';
 
-/** Ruta centro de Villagarzón → aeropuerto VGZ (la del fixture de ORS). */
-export const CENTRO_VGZ_ROUTE: Route = {
+/** Ruta centro de Villagarzón → aeropuerto VGZ (la del fixture de ORS), como la da el proveedor. */
+export const CENTRO_VGZ_PROVIDER_ROUTE: ProviderRoute = {
   distanceMeters: 5876.4,
   durationSeconds: 548.9,
   polyline:
     'mahE~csrMrBLlE^jEb@bFXvIZtJ]fM{AxPaClRgC~SeC|UuCnV}CzVqDhWwD`VeE~TsErRaFjO_FhJqD~EaBrBi@',
   bbox: [-76.61716, 0.97893, -76.60531, 1.02951],
+  alternatives: 1,
+};
+
+/**
+ * Calidad de esa ruta pedida desde PLACES.VILLAGARZON_CENTER hasta PLACES.AIRPORT_VGZ: la
+ * polilínea empieza a 2 m del centro y termina a 4 m del aeropuerto; 5,9 km por vía contra
+ * 5,8 km en línea recta.
+ */
+export const CENTRO_VGZ_QUALITY: Route['quality'] = {
+  originSnapMeters: 2,
+  destinationSnapMeters: 4,
+  detourRatio: 1.02,
+  unusual: false,
+  alternatives: 1,
+};
+
+/** La misma ruta ya evaluada (lo que guarda la caché y responde GET /routes). */
+export const CENTRO_VGZ_ROUTE: Route = {
+  distanceMeters: CENTRO_VGZ_PROVIDER_ROUTE.distanceMeters,
+  durationSeconds: CENTRO_VGZ_PROVIDER_ROUTE.durationSeconds,
+  polyline: CENTRO_VGZ_PROVIDER_ROUTE.polyline,
+  bbox: CENTRO_VGZ_PROVIDER_ROUTE.bbox,
+  quality: CENTRO_VGZ_QUALITY,
 };
 
 export class FakeRouteProvider implements RouteProvider {
   readonly calls: RouteRequest[] = [];
-  constructor(private readonly respond: (req: RouteRequest) => Promise<Route> | Route) {}
-  async route(req: RouteRequest): Promise<Route> {
+  constructor(
+    private readonly respond: (req: RouteRequest) => Promise<ProviderRoute> | ProviderRoute,
+  ) {}
+  async route(req: RouteRequest): Promise<ProviderRoute> {
     this.calls.push(req);
     return this.respond(req);
   }
@@ -62,6 +88,10 @@ export class RecordingRoutingLog implements RoutingLog {
   readonly warnings: { date: string; count: number; quota: number }[] = [];
   readonly notConfiguredMessages: string[] = [];
   readonly storageErrors: string[] = [];
+  readonly unusual: UnusualRouteLog[] = [];
+  unusualRoute(entry: UnusualRouteLog) {
+    this.unusual.push(entry);
+  }
   providerRequest(entry: ProviderRequestLog) {
     this.requests.push(entry);
   }

@@ -588,6 +588,24 @@ curl -H "Authorization: Bearer <access token>" \
 Debe responder `200` con `distanceMeters`, `durationSeconds`, `polyline` y `"cached": false`; si
 lo repites antes de 10 minutos, `"cached": true`.
 
+### E15 · Ruta más corta y rutas inusuales (HU-307)
+
+No hay secretos nuevos. La API pide a ORS `preference: "shortest"` con hasta 3 rutas
+alternativas **en la misma consulta** (sigue siendo una unidad de cuota) y se queda con la de
+menor distancia. Si origen y destino están a más de 95 km en línea recta, pide una sola ruta: la
+API pública de ORS no calcula alternativas por encima de 100 km.
+
+La respuesta trae `quality`: `originSnapMeters` y `destinationSnapMeters` (cuánto se movió cada
+punto hasta la vía; desde 50 m la app pide confirmar el pin), `detourRatio` (ruta ÷ línea recta)
+y `unusual` (más de 2,5 veces la línea recta, desde 1 km). Cada ruta inusual deja un warning
+`route_unusual` con origen y destino redondeados a 4 decimales, distancias y factor: esa lista
+es la que se revisa en OpenStreetMap para mapear vías faltantes (HU-1102). Búscalo en
+**Observability** → **Events** (`route_unusual`) o con
+`pnpm exec wrangler tail panter-api-staging --env staging --search route_unusual`.
+
+La caché de rutas usa la versión `v2` en la clave: al desplegar, las rutas guardadas con el
+criterio anterior se ignoran solas (expiran en 10 minutos).
+
 ## Darte el rol ADMIN por primera vez
 
 El panel de administración (`/admin` en la web) solo deja entrar a cuentas con el rol ADMIN, y

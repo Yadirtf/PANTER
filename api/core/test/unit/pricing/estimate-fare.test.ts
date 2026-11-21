@@ -73,6 +73,8 @@ describe('makeEstimateFare', () => {
         distanceMeters: 5876.4,
         durationSeconds: 548.9,
         polyline: CENTRO_VGZ_ROUTE.polyline,
+        // HU-307: la calidad de la ruta llega al estimado tal cual.
+        quality: CENTRO_VGZ_ROUTE.quality,
       },
       validUntil: '2026-11-18T19:10:00.000Z',
     });

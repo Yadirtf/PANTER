@@ -35,7 +35,10 @@ export function routingRoutes(
     description:
       'Distancia, duración, polilínea (precisión 5) y bbox de la ruta en carro con ' +
       'OpenRouteService. Caché de 10 minutos por par de coordenadas redondeadas a 4 decimales ' +
-      '(`cached: true` si no consumió cuota). Origen y destino deben estar en el área de servicio.',
+      '(`cached: true` si no consumió cuota). Origen y destino deben estar en el área de servicio. ' +
+      'HU-307: siempre la ruta más corta (preference shortest con hasta 3 alternativas en una ' +
+      'sola consulta) y `quality` con el ajuste a la vía de cada punto (a más de 50 m la app pide ' +
+      'confirmar el pin) y la marca de ruta inusual (más de 2,5 veces la línea recta, desde 1 km).',
     security: [{ bearerAuth: [] }],
     middleware: [requireAuth()],
     request: { query: QuerySchema },

@@ -1,0 +1,46 @@
+{
+  "bbox": [-76.632, 0.97893, -76.596, 1.02951],
+  "routes": [
+    {
+      "summary": { "distance": 6612.8, "duration": 512.3 },
+      "bbox": [-76.61648, 0.97893, -76.596, 1.02951],
+      "geometry": "mahE~csrM|xBorB~{BoKddAdy@",
+      "way_points": [0, 3]
+    },
+    {
+      "summary": { "distance": 5876.4, "duration": 548.9 },
+      "bbox": [-76.61716, 0.97893, -76.60531, 1.02951],
+      "geometry": "mahE~csrMrBLlE^jEb@bFXvIZtJ]fM{AxPaClRgC~SeC|UuCnV}CzVqDhWwD`VeE~TsErRaFjO_FhJqD~EaBrBi@",
+      "way_points": [0, 21]
+    },
+    {
+      "summary": { "distance": 7240.5, "duration": 701.0 },
+      "bbox": [-76.632, 0.97893, -76.60531, 1.02951],
+      "geometry": "mahE~csrMllB~_BvgD_X|d@ylC",
+      "way_points": [0, 3]
+    }
+  ],
+  "metadata": {
+    "attribution": "openrouteservice.org | OpenStreetMap contributors",
+    "service": "routing",
+    "timestamp": 1795461600000,
+    "query": {
+      "coordinates": [
+        [-76.6165, 1.0295],
+        [-76.6053, 0.9789]
+      ],
+      "profile": "driving-car",
+      "profileName": "driving-car",
+      "preference": "shortest",
+      "format": "json",
+      "instructions": false,
+      "units": "m",
+      "alternative_routes": { "target_count": 3, "weight_factor": 1.6, "share_factor": 0.6 }
+    },
+    "engine": {
+      "version": "9.3.0",
+      "build_date": "2025-06-10T11:21:39Z",
+      "graph_date": "2026-11-09T12:44:07Z"
+    }
+  }
+}

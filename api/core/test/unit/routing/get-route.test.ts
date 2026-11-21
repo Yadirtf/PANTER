@@ -1,5 +1,5 @@
 // HU-305: dominio y caso de uso de rutas, con dobles en memoria (sin KV ni ORS).
-import { ApiErrorCode, PLACES, RouteProfile } from '@panter/contracts';
+import { ApiErrorCode, PLACES, RouteProfile, SNAP_WARNING_METERS } from '@panter/contracts';
 import { describe, expect, it } from 'vitest';
 import { makeGetRoute } from '../../../src/modules/routing/application/get-route';
 import { RouteProviderError } from '../../../src/modules/routing/application/ports';
@@ -8,11 +8,16 @@ import {
   consumeRateWindow,
   isQuotaWarning,
   pointOutsideServiceArea,
+  roundForLog,
   routeCacheKey,
   ROUTE_USER_LIMIT,
+  assessRoute,
+  shortestOf,
+  type ProviderRoute,
 } from '../../../src/modules/routing/domain/route';
 import type { AppError } from '../../../src/shared/errors/app-error';
 import {
+  CENTRO_VGZ_PROVIDER_ROUTE,
   CENTRO_VGZ_ROUTE,
   FakeRouteProvider,
   MemoryRateStore,
@@ -32,12 +37,12 @@ const trip = {
 
 function setup(
   options: {
-    respond?: () => Promise<typeof CENTRO_VGZ_ROUTE> | typeof CENTRO_VGZ_ROUTE;
+    respond?: () => Promise<ProviderRoute> | ProviderRoute;
     quota?: number;
   } = {},
 ) {
   let now = NOW;
-  const provider = new FakeRouteProvider(options.respond ?? (() => CENTRO_VGZ_ROUTE));
+  const provider = new FakeRouteProvider(options.respond ?? (() => CENTRO_VGZ_PROVIDER_ROUTE));
   const cache = new MemoryRouteCache();
   const usage = new MemoryUsageCounter();
   const rate = new MemoryRateStore();
@@ -77,12 +82,12 @@ describe('dominio de rutas', () => {
   it('clave de caché: perfil y par redondeado a 4 decimales (≈ 11 m), con sentido', () => {
     const a = routeCacheKey(CAR, { lat: 1.02951, lng: -76.61648 }, PLACES.AIRPORT_VGZ);
     const b = routeCacheKey(CAR, { lat: 1.029514, lng: -76.616476 }, PLACES.AIRPORT_VGZ);
-    expect(a).toBe('route:v1:driving-car:4:10295,-766165:9789,-766053');
+    expect(a).toBe('route:v2:driving-car:4:10295,-766165:9789,-766053');
     expect(b).toBe(a);
     expect(routeCacheKey(CAR, PLACES.AIRPORT_VGZ, PLACES.VILLAGARZON_CENTER)).not.toBe(a);
     // -0.00001 redondea a 0, no a "-0".
     expect(routeCacheKey(CAR, { lat: -0.00001, lng: 0 }, { lat: 0, lng: 0 })).toBe(
-      'route:v1:driving-car:4:0,0:0,0',
+      'route:v2:driving-car:4:0,0:0,0',
     );
   });
 
@@ -121,7 +126,104 @@ describe('dominio de rutas', () => {
   });
 });
 
+describe('calidad de la ruta (HU-307)', () => {
+  const base: ProviderRoute = { ...CENTRO_VGZ_PROVIDER_ROUTE, alternatives: 3 };
+
+  it('elige la de menor distancia; sin candidatas → null', () => {
+    const routes = [
+      { distanceMeters: 6612.8 },
+      { distanceMeters: 5876.4 },
+      { distanceMeters: 7240.5 },
+    ];
+    expect(shortestOf(routes)).toBe(routes[1]);
+    expect(shortestOf([])).toBeNull();
+  });
+
+  it('ajuste a la vía: distancia al primer y al último vértice; factor contra la línea recta', () => {
+    const route = assessRoute(PLACES.VILLAGARZON_CENTER, PLACES.AIRPORT_VGZ, base);
+    expect(route).toEqual({
+      ...CENTRO_VGZ_ROUTE,
+      quality: { ...CENTRO_VGZ_ROUTE.quality, alternatives: 3 },
+    });
+    expect(route).not.toHaveProperty('alternatives');
+  });
+
+  it('ajuste lejano: el pin quedó a ~180 m de la vía donde empezó la ruta', () => {
+    const pinLejano = {
+      lat: PLACES.VILLAGARZON_CENTER.lat + 0.0016,
+      lng: PLACES.VILLAGARZON_CENTER.lng,
+    };
+    const { quality } = assessRoute(pinLejano, PLACES.AIRPORT_VGZ, base);
+    expect(quality.originSnapMeters).toBeGreaterThan(SNAP_WARNING_METERS);
+    expect(quality.originSnapMeters).toBe(177);
+    expect(quality.destinationSnapMeters).toBe(4);
+  });
+
+  it('ruta inusual: más de 2,5 veces la línea recta y al menos 1 km', () => {
+    const lejos = assessRoute(PLACES.VILLAGARZON_CENTER, PLACES.AIRPORT_VGZ, {
+      ...base,
+      distanceMeters: 16_000,
+    });
+    expect(lejos.quality).toMatchObject({ unusual: true, detourRatio: 2.78 });
+    // Trayecto corto: el factor se dispara pero no se marca.
+    const corto = assessRoute(
+      PLACES.VILLAGARZON_CENTER,
+      { lat: PLACES.VILLAGARZON_CENTER.lat + 0.001, lng: PLACES.VILLAGARZON_CENTER.lng },
+      { ...base, distanceMeters: 900 },
+    );
+    expect(corto.quality.unusual).toBe(false);
+  });
+
+  it('polilínea vacía o ilegible: ajuste 0', () => {
+    for (const polyline of ['', '@@@\u0001']) {
+      const { quality } = assessRoute(PLACES.VILLAGARZON_CENTER, PLACES.AIRPORT_VGZ, {
+        ...base,
+        polyline,
+      });
+      expect([quality.originSnapMeters, quality.destinationSnapMeters]).toEqual([0, 0]);
+    }
+  });
+
+  it('redondeo del log a 4 decimales, sin "-0"', () => {
+    expect(roundForLog({ lat: 1.029512345, lng: -76.616549 })).toEqual({
+      lat: 1.0295,
+      lng: -76.6165,
+    });
+    expect(Object.is(roundForLog({ lat: -0.00001, lng: 0 }).lat, 0)).toBe(true);
+  });
+});
+
 describe('makeGetRoute', () => {
+  it('ruta inusual: responde la marca, registra route_unusual redondeado y no lo repite desde la caché', async () => {
+    const { getRoute, log } = setup({
+      respond: () => ({ ...CENTRO_VGZ_PROVIDER_ROUTE, distanceMeters: 16_000, alternatives: 3 }),
+    });
+    const origin = { lat: 1.029512345, lng: -76.616549 };
+    const route = await getRoute({ ...trip, origin });
+    expect(route.quality).toMatchObject({ unusual: true, alternatives: 3 });
+    expect(log.unusual).toEqual([
+      {
+        profile: CAR,
+        origin: { lat: 1.0295, lng: -76.6165 },
+        destination: PLACES.AIRPORT_VGZ,
+        distanceMeters: 16_000,
+        straightMeters: 5765,
+        detourRatio: 2.78,
+        originSnapMeters: 8,
+        destinationSnapMeters: 4,
+        alternatives: 3,
+      },
+    ]);
+    expect((await getRoute({ ...trip, origin })).cached).toBe(true);
+    expect(log.unusual).toHaveLength(1);
+  });
+
+  it('ruta normal: no registra route_unusual', async () => {
+    const { getRoute, log } = setup();
+    expect((await getRoute(trip)).quality.unusual).toBe(false);
+    expect(log.unusual).toEqual([]);
+  });
+
   it('consulta ORS, guarda en caché y la segunda vez responde cached sin gastar cuota', async () => {
     const { getRoute, provider, usage, log } = setup();
     expect(await getRoute(trip)).toEqual({ ...CENTRO_VGZ_ROUTE, cached: false });

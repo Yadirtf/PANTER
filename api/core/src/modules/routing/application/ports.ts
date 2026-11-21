@@ -1,5 +1,5 @@
 import type { LatLng, RouteProfile } from '@panter/contracts';
-import type { RateWindow, Route } from '../domain/route';
+import type { ProviderRoute, RateWindow, Route } from '../domain/route';
 
 export type RouteProfileName = (typeof RouteProfile)[keyof typeof RouteProfile];
 
@@ -37,9 +37,12 @@ export class RouteProviderError extends Error {
   }
 }
 
-/** Puerto: proveedor de rutas (OpenRouteService). Lanza `RouteProviderError`. */
+/**
+ * Puerto: proveedor de rutas (OpenRouteService). Pide la ruta más corta con alternativas en una
+ * sola consulta y devuelve la de menor distancia (HU-307). Lanza `RouteProviderError`.
+ */
 export interface RouteProvider {
-  route(request: RouteRequest): Promise<Route>;
+  route(request: RouteRequest): Promise<ProviderRoute>;
 }
 
 /** Puerto: caché de rutas (KV, 10 minutos). */
@@ -69,8 +72,27 @@ export interface ProviderRequestLog {
   durationMs: number;
 }
 
+/**
+ * Ruta inusual (HU-307): más de 2,5 veces la línea recta y al menos 1 km. Origen y destino van
+ * redondeados a 4 decimales: sirven para ubicar la vía faltante en OpenStreetMap (HU-1102) sin
+ * registrar la ubicación exacta de nadie.
+ */
+export interface UnusualRouteLog {
+  profile: RouteProfileName;
+  origin: LatLng;
+  destination: LatLng;
+  distanceMeters: number;
+  straightMeters: number;
+  detourRatio: number;
+  originSnapMeters: number;
+  destinationSnapMeters: number;
+  alternatives: number;
+}
+
 /** Puerto: logs estructurados del módulo. */
 export interface RoutingLog {
+  /** HU-307: ruta anómala, para mapear después la vía en OSM. */
+  unusualRoute(entry: UnusualRouteLog): void;
   providerRequest(entry: ProviderRequestLog): void;
   quotaWarning(entry: { date: string; count: number; quota: number }): void;
   notConfigured(message: string): void;

@@ -65,6 +65,13 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
 export function createConsoleRoutingLog(): RoutingLog {
   return {
     providerRequest: (entry) => console.log({ event: 'ors_request', ...entry }),
+    // HU-307: búscalo en Workers Logs por `event = route_unusual` para mapear la vía (HU-1102).
+    unusualRoute: (entry) =>
+      console.warn({
+        event: 'route_unusual',
+        ...entry,
+        message: `Ruta ${entry.detourRatio} veces más larga que la línea recta: revisa las vías en OpenStreetMap.`,
+      }),
     quotaWarning: (entry) =>
       console.warn({
         event: 'ors_quota_warning',

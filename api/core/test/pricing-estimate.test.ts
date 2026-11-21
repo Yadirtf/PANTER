@@ -117,6 +117,22 @@ describe('POST /fares/estimate', () => {
     expect(ors).toHaveLength(1);
   });
 
+  it('HU-307: la ruta del estimado trae su calidad y gasta una sola consulta a ORS', async () => {
+    const { estimate, ors } = setup();
+    const res = await estimate({
+      origin: uniqueOrigin(),
+      destination: PLACES.AIRPORT_VGZ,
+      vehicleType: 'TAXI',
+    });
+    const body = FareEstimateResponseSchema.parse(await res.json());
+    expect(body.route.quality).toMatchObject({
+      destinationSnapMeters: 4,
+      unusual: false,
+      alternatives: 1,
+    });
+    expect(ors).toHaveLength(1);
+  });
+
   it('mototaxi de noche (reserva a las 22:00)', async () => {
     const { estimate } = setup();
     const res = await estimate({
