@@ -127,9 +127,12 @@ export function createCatalogRepository(deps: {
       (cached) => cached?.data ?? {},
     ));
 
-  /** Una lista fallida no queda memorizada: el siguiente intento vuelve a pedir. */
-  function memo<T>(promise: Promise<T>, clear: () => void): Promise<T> {
-    promise.catch(clear);
+  /**
+   * Una lista fallida no queda memorizada: el siguiente intento vuelve a pedir. `clear` recibe la
+   * promesa para no borrar una más nueva (un `refresh` posterior).
+   */
+  function memo<T>(promise: Promise<T>, clear: (failed: Promise<T>) => void): Promise<T> {
+    promise.catch(() => clear(promise));
     return promise;
   }
 
@@ -144,7 +147,9 @@ export function createCatalogRepository(deps: {
             fetch: () => api.listAreas(),
             now,
           }).then((result) => ({ ...result, items: result.items.items })),
-          () => (areas = null),
+          (failed) => {
+            if (areas === failed) areas = null;
+          },
         );
       }
       return areas;
@@ -159,7 +164,9 @@ export function createCatalogRepository(deps: {
             fetch: () => api.listPlaces(),
             now,
           }).then((result) => ({ ...result, items: result.items.items })),
-          () => (places = null),
+          (failed) => {
+            if (places === failed) places = null;
+          },
         );
       }
       return places;
