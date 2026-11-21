@@ -1,4 +1,6 @@
-// Capas del estimado sobre <PanterMap>: ruta, pin de origen (arrastrable) y pin de destino.
+// Capas del estimado sobre <PanterMap>: ruta, pin de origen (arrastrable) y pin de destino. Con
+// los avisos de HU-307: el punto de la vía donde empieza o termina la ruta (si el pin quedó
+// lejos) y la línea recta punteada entre origen y destino (si la ruta es inusual).
 import { GeoJSONSource, Layer, ViewAnnotation } from '@maplibre/maplibre-react-native';
 import type { LatLng } from '@panter/contracts';
 import { useMemo } from 'react';
@@ -7,6 +9,14 @@ import { StyleSheet, View } from 'react-native';
 const ROUTE_COLOR = '#1d4ed8';
 const ORIGIN_COLOR = '#15803d';
 const DESTINATION_COLOR = '#b42318';
+const WARNING_COLOR = '#b45309';
+
+export interface SnapMarker {
+  /** Pin pedido por el pasajero. */
+  pin: LatLng;
+  /** Punto de la vía donde empieza o termina la ruta. */
+  road: LatLng;
+}
 
 interface TripMapLayersProps {
   origin: LatLng;
@@ -15,6 +25,18 @@ interface TripMapLayersProps {
   destination: LatLng | null;
   pendingConfirmation: boolean;
   route: readonly LatLng[];
+  /** Ajustes a la vía que superan el umbral (HU-307). */
+  snaps?: readonly SnapMarker[];
+  /** Línea recta origen → destino de una ruta inusual (HU-307). */
+  straightLine?: readonly [LatLng, LatLng] | null;
+}
+
+function lineFeature(points: readonly LatLng[]): GeoJSON.Feature<GeoJSON.LineString> {
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'LineString', coordinates: points.map((p) => [p.lng, p.lat]) },
+  };
 }
 
 export function TripMapLayers({
@@ -23,14 +45,17 @@ export function TripMapLayers({
   destination,
   pendingConfirmation,
   route,
+  snaps = [],
+  straightLine = null,
 }: TripMapLayersProps) {
-  const line = useMemo<GeoJSON.Feature<GeoJSON.LineString>>(
+  const line = useMemo(() => lineFeature(route), [route]);
+  const straight = useMemo(() => (straightLine ? lineFeature(straightLine) : null), [straightLine]);
+  const snapLinks = useMemo<GeoJSON.FeatureCollection<GeoJSON.LineString>>(
     () => ({
-      type: 'Feature',
-      properties: {},
-      geometry: { type: 'LineString', coordinates: route.map((p) => [p.lng, p.lat]) },
+      type: 'FeatureCollection',
+      features: snaps.map(({ pin, road }) => lineFeature([pin, road])),
     }),
-    [route],
+    [snaps],
   );
 
   return (
@@ -52,6 +77,44 @@ export function TripMapLayers({
           />
         </GeoJSONSource>
       ) : null}
+
+      {straight ? (
+        // Referencia de la línea recta: punteada para no confundirla con la ruta.
+        <GeoJSONSource id="trip-straight-line" data={straight}>
+          <Layer
+            id="trip-straight-line"
+            type="line"
+            paint={{
+              'line-color': WARNING_COLOR,
+              'line-width': 2.5,
+              'line-dasharray': [2, 2],
+              'line-opacity': 0.9,
+            }}
+          />
+        </GeoJSONSource>
+      ) : null}
+
+      {snaps.length > 0 ? (
+        <GeoJSONSource id="trip-snap-links" data={snapLinks}>
+          <Layer
+            id="trip-snap-links"
+            type="line"
+            paint={{ 'line-color': WARNING_COLOR, 'line-width': 2, 'line-dasharray': [1, 1.5] }}
+          />
+        </GeoJSONSource>
+      ) : null}
+      {snaps.map(({ road }, index) => (
+        <ViewAnnotation
+          key={`snap-${index}`}
+          id={`trip-snap-${index}`}
+          lngLat={[road.lng, road.lat]}
+        >
+          <View
+            style={styles.snap}
+            accessibilityLabel="Punto de la vía donde empieza o termina la ruta"
+          />
+        </ViewAnnotation>
+      ))}
 
       <ViewAnnotation
         id="trip-origin"
@@ -95,6 +158,15 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: '#ffffff',
     elevation: 4,
+  },
+  snap: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 3,
+    borderColor: WARNING_COLOR,
+    backgroundColor: '#ffffff',
+    elevation: 3,
   },
   flag: { alignItems: 'center' },
   pending: { opacity: 0.7 },

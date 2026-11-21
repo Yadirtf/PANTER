@@ -17,11 +17,13 @@ import { formatCop, formatDistance, formatDuration } from '../estimate/format';
 import {
   type PlannerAction,
   type PlannerState,
+  plannerRouteNotices,
   plannerStep,
   QUOTABLE_VEHICLES,
   type QuoteState,
 } from '../estimate/planner';
 import type { QuoteValidity } from '../estimate/quote-validity';
+import type { RouteNotices } from '../estimate/route-quality';
 import { searchPlaces } from '../places/frequent-places';
 
 interface TripPanelProps {
@@ -180,12 +182,66 @@ function Quote({ state, dispatch, validity }: TripPanelProps) {
         </View>
       </View>
 
+      <RouteNoticesView notices={plannerRouteNotices(state)} dispatch={dispatch} />
+
       <QuoteBody quote={quote} dispatch={dispatch} validity={validity} />
 
       <View style={styles.order}>
         <Button title="Pedir viaje" disabled onPress={() => undefined} />
         <Text style={styles.soonCenter}>Disponible pronto</Text>
       </View>
+    </>
+  );
+}
+
+/** Avisos de HU-307: pin lejos de la vía (mover o dejar así) y ruta inusual. */
+function RouteNoticesView({
+  notices,
+  dispatch,
+}: {
+  notices: RouteNotices;
+  dispatch: Dispatch<PlannerAction>;
+}) {
+  if (notices.snaps.length === 0 && !notices.unusual) return null;
+  return (
+    <>
+      {notices.snaps.map((notice) => (
+        <View key={notice.end} style={styles.warning} accessibilityRole="alert">
+          <View style={styles.warningHeader}>
+            <MaterialIcons name="wrong-location" size={20} color={WARNING_TEXT} />
+            <Text style={styles.warningText}>{notice.message}</Text>
+          </View>
+          <Text style={styles.small}>
+            La ruta y el precio se calcularon desde el punto naranja de la vía.
+          </Text>
+          <View style={styles.warningActions}>
+            {notice.roadPoint ? (
+              <View style={styles.flex}>
+                <Button
+                  title="Mover el pin a la vía"
+                  onPress={() => dispatch({ type: 'snapPinMoved', end: notice.end })}
+                />
+              </View>
+            ) : null}
+            <View style={styles.flex}>
+              <Button
+                title="Está bien así"
+                variant="secondary"
+                onPress={() => dispatch({ type: 'snapAccepted', end: notice.end })}
+              />
+            </View>
+          </View>
+        </View>
+      ))}
+      {notices.unusual ? (
+        <View style={styles.warning} accessibilityRole="alert">
+          <View style={styles.warningHeader}>
+            <MaterialIcons name="alt-route" size={20} color={WARNING_TEXT} />
+            <Text style={styles.warningText}>{notices.unusual.message}</Text>
+          </View>
+          <Text style={styles.small}>La línea punteada es la distancia en línea recta.</Text>
+        </View>
+      ) : null}
     </>
   );
 }
@@ -280,6 +336,8 @@ function QuoteBody({
   }
 }
 
+const WARNING_TEXT = '#92400e';
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.background,
@@ -327,6 +385,15 @@ const styles = StyleSheet.create({
   error: { gap: 8 },
   errorTitle: { fontSize: 16, fontWeight: '700', color: colors.error },
   quote: { gap: 6 },
+  warning: {
+    gap: 6,
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+    padding: 10,
+  },
+  warningHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  warningText: { flex: 1, fontSize: 15, fontWeight: '600', color: WARNING_TEXT },
+  warningActions: { flexDirection: 'row', gap: 8 },
   updated: {
     flexDirection: 'row',
     alignItems: 'center',

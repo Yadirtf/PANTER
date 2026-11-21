@@ -1,9 +1,10 @@
 // Mapa del pasajero con el estimado (HU-404): toca el mapa o elige un lugar frecuente, cambia el
 // origen arrastrando el pin verde y mira la ruta, el precio y su desglose.
-import { type ReactNode, useCallback, useEffect, useRef } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { MapHomeLayout } from '../../map/components/map-home-layout';
 import { PanterMap, type PanterMapHandle } from '../../map/components/panter-map';
 import type { LocationStatus } from '../../map/location/location-status';
+import { plannerRouteNotices } from '../estimate/planner';
 import { useTripPlanner } from '../use-trip-planner';
 import { TripMapLayers } from './trip-map-layers';
 import { TripPanel } from './trip-panel';
@@ -28,6 +29,23 @@ export function TripPlanner({ top }: { top: ReactNode }) {
 
   const destination = state.candidate ?? state.destination?.point ?? null;
 
+  // Avisos de HU-307 sobre el mapa: punto de la vía y línea recta de referencia.
+  const notices = useMemo(() => plannerRouteNotices(state), [state]);
+  const snaps = useMemo(
+    () =>
+      notices.snaps.flatMap((notice) =>
+        notice.roadPoint
+          ? [
+              {
+                pin: notice.end === 'origin' ? state.origin.point : state.destination!.point,
+                road: notice.roadPoint,
+              },
+            ]
+          : [],
+      ),
+    [notices],
+  );
+
   return (
     <MapHomeLayout
       top={top}
@@ -45,6 +63,8 @@ export function TripPlanner({ top }: { top: ReactNode }) {
             destination={destination}
             pendingConfirmation={state.candidate !== null}
             route={route ?? []}
+            snaps={snaps}
+            straightLine={notices.unusual?.straightLine ?? null}
           />
         </PanterMap>
       )}
