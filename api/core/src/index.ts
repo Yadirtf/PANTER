@@ -19,6 +19,9 @@ import {
   pricingAdminRoutes,
   type PricingAdminFactories,
 } from './modules/pricing/http/admin-routes';
+// E15 · HU-308 (barrios y veredas)
+import { buildAreaFactories } from './composition/catalog';
+import { areaRoutes, type AreaFactories } from './modules/catalog/http/area-routes';
 import { adminRoutes, type AdminFactories } from './modules/admin/http/routes';
 import { consentRoutes, type ConsentFactories } from './modules/consent/http/routes';
 import { meRoutes } from './modules/auth/http/me-routes';
@@ -46,6 +49,8 @@ export interface AppDeps {
   pricingAdmin: PricingAdminFactories;
   /** M2 · HU-402 */
   pricing: PricingFactories;
+  /** E15 · HU-308 */
+  areas: AreaFactories;
 }
 
 /**
@@ -63,6 +68,7 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
     routing: overrides.routing ?? buildRoutingFactories(),
     pricingAdmin: overrides.pricingAdmin ?? buildPricingAdminFactories(),
     pricing: overrides.pricing ?? buildPricingFactories(),
+    areas: overrides.areas ?? buildAreaFactories(),
   };
   const app = createRouter();
 
@@ -87,6 +93,8 @@ export function createApp(overrides: Partial<AppDeps> = {}) {
   app.route('/', pricingAdminRoutes(deps.pricingAdmin, requireAuth));
   // M2 · HU-402: POST /fares/estimate
   app.route('/', pricingRoutes(deps.pricing, requireAuth));
+  // E15 · HU-308: /areas y /admin/areas
+  app.route('/', areaRoutes(deps.areas, requireAuth));
 
   app.openAPIRegistry.register('Error', ErrorSchema);
   // Esquema de seguridad de las rutas protegidas con requireAuth (/me, /admin…).
