@@ -12,6 +12,14 @@ import {
 } from '@panter/contracts';
 import type { FrequentPlace } from '../places/frequent-places';
 import { estimateErrorView, type EstimateErrorView } from './estimate-errors';
+import {
+  type AcceptedSnaps,
+  NO_ACCEPTED_SNAPS,
+  NO_NOTICES,
+  type RouteEnd,
+  type RouteNotices,
+  routeNotices,
+} from './route-quality';
 
 /** Vehículos que se pueden cotizar hoy; el 4x4 aparece como "Próximamente". */
 export const QUOTABLE_VEHICLES = [VehicleType.MOTOTAXI, VehicleType.TAXI] as const;
@@ -62,6 +70,8 @@ export interface PlannerState {
   nextRequestId: number;
   /** Ya se renovó sola una vez la cotización de esta selección (cuida la cuota de rutas). */
   autoRenewed: boolean;
+  /** Pines que el pasajero dejó "así" pese al aviso de ajuste a la vía (HU-307). */
+  acceptedSnaps: AcceptedSnaps;
 }
 
 export type PlannerAction =
@@ -76,7 +86,11 @@ export type PlannerAction =
   | { type: 'quoteExpired' }
   | { type: 'estimateSucceeded'; requestId: number; estimate: FareEstimateResponse }
   | { type: 'estimateFailed'; requestId: number; code: string }
-  | { type: 'destinationCleared' };
+  | { type: 'destinationCleared' }
+  /** "Está bien así": oculta el aviso de ajuste a la vía de ese pin (HU-307). */
+  | { type: 'snapAccepted'; end: RouteEnd }
+  /** "Mover el pin a la vía": lleva el pin al inicio o fin de la ruta y vuelve a cotizar. */
+  | { type: 'snapPinMoved'; end: RouteEnd };
 
 export function initialPlannerState(): PlannerState {
   return {
@@ -87,6 +101,7 @@ export function initialPlannerState(): PlannerState {
     quote: { status: 'none' },
     nextRequestId: 1,
     autoRenewed: false,
+    acceptedSnaps: NO_ACCEPTED_SNAPS,
   };
 }
 
@@ -201,8 +216,37 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
         destination: null,
         quote: { status: 'none' },
         autoRenewed: false,
+        acceptedSnaps: NO_ACCEPTED_SNAPS,
       };
+    case 'snapAccepted': {
+      const pin = action.end === 'origin' ? state.origin.point : state.destination?.point;
+      if (!pin) return state;
+      return { ...state, acceptedSnaps: { ...state.acceptedSnaps, [action.end]: pin } };
+    }
+    case 'snapPinMoved': {
+      const notice = plannerRouteNotices(state).snaps.find((n) => n.end === action.end);
+      const road = notice?.roadPoint;
+      if (!road || !state.destination) return state;
+      const next: PlannerState =
+        action.end === 'origin'
+          ? { ...state, origin: { point: road, source: 'manual' } }
+          : { ...state, destination: { ...state.destination, point: road } };
+      return requestQuote({ ...next, autoRenewed: false });
+    }
   }
+}
+
+/** Avisos de ajuste a la vía y de ruta inusual de la cotización visible (HU-307). */
+export function plannerRouteNotices(state: PlannerState): RouteNotices {
+  const { quote, destination } = state;
+  if ((quote.status !== 'ready' && quote.status !== 'expired') || !destination) return NO_NOTICES;
+  return routeNotices({
+    quality: quote.estimate.route.quality,
+    route: quote.route,
+    origin: state.origin.point,
+    destination: destination.point,
+    accepted: state.acceptedSnaps,
+  });
 }
 
 /** Ruta de la polilínea; una polilínea inválida no rompe la pantalla (se dibuja sin ruta). */
