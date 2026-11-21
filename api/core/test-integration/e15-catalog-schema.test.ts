@@ -53,14 +53,12 @@ describe.skipIf(!url)('catálogo E15 (integración)', () => {
       .returning();
     areaIds.push(row!.id);
     await expect(
-      db
-        .insert(schema.areas)
-        .values({
-          name: name.toUpperCase(),
-          nameSearch: searchKey(name.toUpperCase()),
-          kind: 'BARRIO',
-          polygon: centro,
-        }),
+      db.insert(schema.areas).values({
+        name: name.toUpperCase(),
+        nameSearch: searchKey(name.toUpperCase()),
+        kind: 'BARRIO',
+        polygon: centro,
+      }),
     ).rejects.toThrow();
     const [vereda] = await db
       .insert(schema.areas)
