@@ -61,5 +61,5 @@ jobs:
         with:
           name: panter-staging-debug-apk
           path: app/android/app/build/outputs/apk/debug/*.apk
-          retention-days: 7
+          retention-days: 2
           if-no-files-found: error

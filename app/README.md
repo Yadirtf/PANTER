@@ -43,7 +43,7 @@ build local) con el mismo identificador. Las APK de staging se instalan como
 | Workflow                | Disparador                                       | Resultado                                                    |
 | ----------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
 | `app.yml`               | Tag `app-v*` (p. ej. `app-v0.3.0`) o manual      | APK de producción firmada adjunta a un Release con changelog |
-| `app-preview.yml`       | Push a `develop` con cambios en `app/**`, manual | APK de staging como artefacto de la ejecución (14 días)      |
+| `app-preview.yml`       | Push a `develop` con cambios en `app/**`, manual | APK de staging como artefacto de la ejecución (2 días)       |
 | `app-release-check.yml` | PR con cambios en la app o el camino de release  | Release firmado con un keystore temporal (sin publicar nada) |
 | `app-android-build.yml` | PR con cambios en la app                         | `expo prebuild` + `assembleDebug`                            |
 
