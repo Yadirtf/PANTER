@@ -54,16 +54,30 @@ export const AreaSchema = AreaSummarySchema.extend({
 });
 export type Area = z.infer<typeof AreaSchema>;
 
+/** Máximo de ids en `GET /areas?ids=…` (p. ej. para dibujar todos los barrios en la web). */
+export const AREA_IDS_MAX = 100;
+
 export const AreasQuerySchema = z.object({
   q: z.string().trim().max(80).optional(),
   kind: AreaKindSchema.optional(),
   /** Solo para ADMIN: incluir los desactivados. */
   includeInactive: z.coerce.boolean().default(false),
+  /** Opcional: solo estos ids, separados por comas (máx. AREA_IDS_MAX). */
+  ids: z
+    .string()
+    .optional()
+    .transform((s) => (s ? [...new Set(s.split(',').map((x) => x.trim()))] : undefined))
+    .pipe(z.array(z.uuid()).min(1).max(AREA_IDS_MAX).optional()),
+  /** `polygon`: cada item trae polígono y centro (AreaSchema). Requiere `ids`. */
+  include: z.literal('polygon').optional(),
 });
 export type AreasQuery = z.infer<typeof AreasQuerySchema>;
 
+/** Con `include=polygon` los items son `Area` completos (que también cumplen AreaSummary). */
 export const AreasResponseSchema = z.object({ items: z.array(AreaSummarySchema) });
 export type AreasResponse = z.infer<typeof AreasResponseSchema>;
+export const AreasWithPolygonResponseSchema = z.object({ items: z.array(AreaSchema) });
+export type AreasWithPolygonResponse = z.infer<typeof AreasWithPolygonResponseSchema>;
 
 export const LocateQuerySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),

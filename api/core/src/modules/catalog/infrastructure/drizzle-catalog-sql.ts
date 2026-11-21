@@ -16,8 +16,9 @@ export const isoMicros = (column: SQL | unknown) =>
   sql<string>`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 /** Columna timestamptz como ISO 8601 en UTC con milisegundos (lo que valida `z.iso.datetime`). */
-export const isoMillis = (column: string) =>
-  sql.raw(`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`);
+export const isoMillisText = (column: string) =>
+  `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+export const isoMillis = (column: string) => sql.raw(isoMillisText(column));
 
 /** Snapshot JSON de un barrio para `catalog_changes`; el polígono va como GeoJSON. */
 export const areaJson = (t: string) =>

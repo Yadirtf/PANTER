@@ -33,11 +33,29 @@ export type ListAreas = (query: AreasQuery, viewer: Viewer) => Promise<AreasResp
 
 /**
  * Lista sin polígono (HU-308), con búsqueda sin tildes (`searchKey` sobre `name_search`) y
- * filtro por tipo. `includeInactive` es solo para ADMIN → 403 si no lo es.
+ * filtro por tipo. `includeInactive` es solo para ADMIN → 403 si no lo es. Con `ids` devuelve
+ * solo esos (sin `q` ni `kind`) y con `include=polygon`, cada uno con polígono y centro.
  */
 export function makeListAreas(deps: { areas: AreaReader }): ListAreas {
-  return async ({ q, kind, includeInactive }, viewer) => {
+  return async ({ q, kind, includeInactive, ids, include }, viewer) => {
     if (includeInactive && !viewer.isAdmin) throw CatalogErrors.forbidden();
+    if (include && !ids) throw CatalogErrors.polygonNeedsIds();
+    if (ids) {
+      // Varios por id (la web dibuja todos los barrios): una sola consulta, en el orden pedido.
+      const found = new Map((await deps.areas.getMany(ids)).map((a) => [a.id, a]));
+      const areas = ids
+        .map((id) => found.get(id))
+        .filter((a): a is Area => a !== undefined && (a.active || includeInactive));
+      return {
+        items: areas.map((a) =>
+          include
+            ? viewer.isAdmin
+              ? a
+              : { ...a, updatedBy: null }
+            : { id: a.id, name: a.name, kind: a.kind, active: a.active },
+        ),
+      };
+    }
     const search = q ? searchKey(q) : '';
     const items = await deps.areas.list({
       ...(search ? { search } : {}),

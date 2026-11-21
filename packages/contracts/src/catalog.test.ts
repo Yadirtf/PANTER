@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AREA_IDS_MAX,
+  AreasQuerySchema,
   AreaCreateBodySchema,
   AreaImportBodySchema,
   describeLocation,
@@ -118,5 +120,26 @@ describe('esquemas del catálogo', () => {
       limit: 5,
     });
     expect(NearbyQuerySchema.safeParse({ lat: 1, lng: 1, radiusMeters: 5000 }).success).toBe(false);
+  });
+});
+
+describe('AreasQuerySchema: ids e include (E15)', () => {
+  const a = '6c1f8a2e-0b7d-4f3a-9c51-1a2b3c4d5e01';
+  const b = '6c1f8a2e-0b7d-4f3a-9c51-1a2b3c4d5e02';
+  it('ids separados por comas, sin repetir; include=polygon', () => {
+    expect(AreasQuerySchema.parse({ ids: `${a}, ${b},${a}`, include: 'polygon' })).toMatchObject({
+      ids: [a, b],
+      include: 'polygon',
+    });
+    expect(AreasQuerySchema.parse({}).ids).toBeUndefined();
+  });
+  it('rechaza ids inválidos o más del máximo', () => {
+    expect(AreasQuerySchema.safeParse({ ids: 'x' }).success).toBe(false);
+    const many = Array.from(
+      { length: AREA_IDS_MAX + 1 },
+      (_, i) => `6c1f8a2e-0b7d-4f3a-9c51-${String(i).padStart(12, '0')}`,
+    ).join(',');
+    expect(AreasQuerySchema.safeParse({ ids: many }).success).toBe(false);
+    expect(AreasQuerySchema.safeParse({ include: 'todo' }).success).toBe(false);
   });
 });
