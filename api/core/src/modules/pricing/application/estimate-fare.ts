@@ -26,7 +26,8 @@ export type EstimateFare = (
  * 2. Regla del vehículo (caché del isolate); inexistente o inactiva → 404 `FARE_RULE_NOT_FOUND`
  *    antes de gastar cuota de rutas.
  * 3. Ruta con el caso de uso de HU-305 (misma caché KV: no consume cuota extra) y geocercas que
- *    cubren el origen o el destino.
+ *    cubren el origen o el destino. La ruta trae su calidad (HU-307: ajuste a la vía y ruta
+ *    inusual) para que la app avise igual que con GET /routes.
  * 4. Cálculo puro (`calculateFare`) y vigencia `validUntil` = ahora + 10 min.
  */
 export function makeEstimateFare(deps: {
@@ -71,6 +72,7 @@ export function makeEstimateFare(deps: {
         distanceMeters: route.distanceMeters,
         durationSeconds: route.durationSeconds,
         polyline: route.polyline,
+        quality: route.quality,
       },
       isNight: quote.isNight,
       validUntil: new Date(current + FARE_ESTIMATE_TTL_SECONDS * 1000).toISOString(),

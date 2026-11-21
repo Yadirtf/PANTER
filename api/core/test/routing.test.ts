@@ -1,6 +1,16 @@
 // HU-305: GET /routes dentro de workerd, con KV de Miniflare y fetch simulado de ORS (fixture
 // con el formato de respuesta de POST /v2/directions/driving-car).
-import { ApiErrorCode, MapRoutes, PLACES, Role, RouteResponseSchema } from '@panter/contracts';
+import {
+  ApiErrorCode,
+  DETOUR_RATIO_THRESHOLD,
+  MapRoutes,
+  PLACES,
+  Role,
+  ROUTE_ALTERNATIVES,
+  ROUTE_CACHE_VERSION,
+  RouteResponseSchema,
+  SNAP_WARNING_METERS,
+} from '@panter/contracts';
 import { env, exports } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildAuthFactories } from '../src/composition/auth';
@@ -17,9 +27,11 @@ import {
 } from '../src/modules/routing/infrastructure/kv-routing-stores';
 import {
   createOrsRouteProvider,
+  orsDirectionsBody,
   parseRetryAfter,
   type FetchLike,
 } from '../src/modules/routing/infrastructure/openrouteservice-route-provider';
+import orsAlternatives from './fixtures/ors-directions-alternativas.json';
 import orsFixture from './fixtures/ors-directions-centro-vgz.json';
 import { MemoryUserRepository } from './support/auth-fakes';
 import { RecordingRoutingLog } from './support/routing-fakes';
@@ -97,6 +109,13 @@ describe('GET /routes', () => {
       durationSeconds: 548.9,
       polyline: orsFixture.routes[0]!.geometry,
       bbox: [-76.61716, 0.97893, -76.60531, 1.02951],
+      quality: {
+        originSnapMeters: expect.any(Number),
+        destinationSnapMeters: 4,
+        detourRatio: expect.any(Number),
+        unusual: false,
+        alternatives: 1,
+      },
       cached: false,
     });
 
@@ -110,6 +129,9 @@ describe('GET /routes', () => {
         [origin.lng, origin.lat],
         [PLACES.AIRPORT_VGZ.lng, PLACES.AIRPORT_VGZ.lat],
       ],
+      // HU-307: ruta más corta con alternativas en la misma consulta.
+      preference: 'shortest',
+      alternative_routes: { target_count: 3, weight_factor: 1.6, share_factor: 0.6 },
       instructions: false,
       units: 'm',
     });
@@ -208,6 +230,65 @@ describe('GET /routes', () => {
   });
 });
 
+describe('GET /routes · ruta más corta y calidad (HU-307)', () => {
+  it('3 alternativas en una sola consulta: elige la más corta, con su bbox y polilínea', async () => {
+    const ors = fakeOrs(() => Response.json(orsAlternatives));
+    const { get, q, log } = setup({ fetch: ors.fetch });
+    const res = await get(q(uniqueOrigin(), PLACES.AIRPORT_VGZ));
+    expect(res.status).toBe(200);
+    const body = RouteResponseSchema.parse(await res.json());
+    const shortest = orsAlternatives.routes[1]!;
+    expect(body).toMatchObject({
+      distanceMeters: 5876.4,
+      durationSeconds: 548.9,
+      polyline: shortest.geometry,
+      bbox: shortest.bbox,
+      quality: { alternatives: 3, unusual: false },
+      cached: false,
+    });
+    expect(ors.calls).toHaveLength(1);
+    expect(log.requests).toHaveLength(1);
+    expect(log.unusual).toEqual([]);
+  });
+
+  it('ajuste lejano: el pin quedó a más de 50 m de donde ORS empezó la ruta', async () => {
+    const ors = fakeOrs();
+    const { get, q } = setup({ fetch: ors.fetch });
+    // La polilínea del fixture empieza en (1.02951, -76.61648): el pin está ~200 m al norte.
+    const pin = { lat: 1.0313 + ++seq / 1_000_000, lng: -76.61648 };
+    const body = RouteResponseSchema.parse(await (await get(q(pin, PLACES.AIRPORT_VGZ))).json());
+    expect(body.quality!.originSnapMeters).toBeGreaterThan(SNAP_WARNING_METERS);
+    expect(body.quality!.destinationSnapMeters).toBeLessThan(SNAP_WARNING_METERS);
+  });
+
+  it('ruta inusual: se marca en la respuesta y se registra route_unusual una sola vez', async () => {
+    const long = structuredClone(orsFixture);
+    long.routes[0]!.summary.distance = 16_000;
+    const ors = fakeOrs(() => Response.json(long));
+    const { get, q, log } = setup({ fetch: ors.fetch });
+    // Junto al inicio de la polilínea (ningún otro caso usa este par en la caché).
+    const origin = { lat: 1.02951, lng: -76.616249 };
+    const body = RouteResponseSchema.parse(await (await get(q(origin, PLACES.AIRPORT_VGZ))).json());
+    expect(body.quality).toMatchObject({ unusual: true });
+    expect(body.quality!.detourRatio).toBeGreaterThan(DETOUR_RATIO_THRESHOLD);
+    expect(log.unusual).toHaveLength(1);
+    expect(log.unusual[0]).toMatchObject({
+      origin: { lat: 1.0295, lng: -76.6162 },
+      destination: PLACES.AIRPORT_VGZ,
+      distanceMeters: 16_000,
+    });
+    // Desde la caché (clave con ROUTE_CACHE_VERSION) trae la misma calidad sin repetir el log.
+    const again = RouteResponseSchema.parse(
+      await (await get(q(origin, PLACES.AIRPORT_VGZ))).json(),
+    );
+    expect(again).toMatchObject({ cached: true, quality: body.quality });
+    expect(ors.calls).toHaveLength(1);
+    expect(log.unusual).toHaveLength(1);
+    const keys = await env.KV.list({ prefix: `route:${ROUTE_CACHE_VERSION}:` });
+    expect(keys.keys.length).toBeGreaterThan(0);
+  });
+});
+
 describe('adaptador OpenRouteService', () => {
   const req = {
     origin: PLACES.VILLAGARZON_CENTER,
@@ -283,6 +364,44 @@ describe('adaptador OpenRouteService', () => {
       durationSeconds: 0,
       polyline: '_ibE_ibE',
       bbox: [1, 1, 1, 1],
+      alternatives: 1,
+    });
+  });
+
+  it('cuerpo: más de 95 km en línea recta → sin alternativas (ORS las limita a 100 km)', () => {
+    const near = orsDirectionsBody(req);
+    expect(near).toMatchObject({
+      preference: 'shortest',
+      alternative_routes: { target_count: ROUTE_ALTERNATIVES },
+    });
+    const far = orsDirectionsBody({
+      ...req,
+      origin: { lat: 1.29, lng: -77.04 },
+      destination: { lat: 0.41, lng: -76.31 },
+    });
+    expect(far).toMatchObject({ preference: 'shortest' });
+    expect(far).not.toHaveProperty('alternative_routes');
+  });
+
+  it('ignora rutas sin geometría y con alternativas no usa el bbox general', async () => {
+    const provider = createOrsRouteProvider({
+      apiKey: 'k',
+      fetch: async () =>
+        Response.json({
+          bbox: [0, 0, 9, 9],
+          routes: [
+            { summary: { distance: 10 } },
+            { summary: { distance: 50 }, geometry: '_ibE_ibE' },
+            { geometry: '_ibE_ibE' },
+          ],
+        }),
+    });
+    expect(await provider.route(req)).toEqual({
+      distanceMeters: 0,
+      durationSeconds: 0,
+      polyline: '_ibE_ibE',
+      bbox: [1, 1, 1, 1],
+      alternatives: 2,
     });
   });
 
@@ -328,6 +447,17 @@ describe('almacenes KV y logs', () => {
       log.notConfigured('Falta ORS_API_KEY');
       log.storageError('route_cache_get', new Error('KV'));
       log.storageError('route_cache_put', 'texto');
+      log.unusualRoute({
+        profile: 'driving-car',
+        origin: { lat: 1.0295, lng: -76.6165 },
+        destination: { lat: 0.9789, lng: -76.6053 },
+        distanceMeters: 16000,
+        straightMeters: 5765,
+        detourRatio: 2.78,
+        originSnapMeters: 8,
+        destinationSnapMeters: 4,
+        alternatives: 3,
+      });
     } finally {
       Object.assign(console, original);
     }
@@ -350,6 +480,19 @@ describe('almacenes KV y logs', () => {
       { event: 'routing_not_configured', message: 'Falta ORS_API_KEY' },
       { event: 'routing_storage_error', operation: 'route_cache_get', error: 'KV' },
       { event: 'routing_storage_error', operation: 'route_cache_put', error: 'texto' },
+      {
+        event: 'route_unusual',
+        profile: 'driving-car',
+        origin: { lat: 1.0295, lng: -76.6165 },
+        destination: { lat: 0.9789, lng: -76.6053 },
+        distanceMeters: 16000,
+        straightMeters: 5765,
+        detourRatio: 2.78,
+        originSnapMeters: 8,
+        destinationSnapMeters: 4,
+        alternatives: 3,
+        message: 'Ruta 2.78 veces más larga que la línea recta: revisa las vías en OpenStreetMap.',
+      },
     ]);
   });
 });

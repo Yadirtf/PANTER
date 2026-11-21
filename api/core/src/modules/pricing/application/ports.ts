@@ -6,6 +6,7 @@ import type {
   GeofenceKind,
   GeofenceUpdateBody,
   LatLng,
+  RouteQuality,
   VehicleType,
 } from '@panter/contracts';
 import type { HistoryCursor } from '../domain/history-cursor';
@@ -99,6 +100,8 @@ export interface EstimateRoute {
   distanceMeters: number;
   durationSeconds: number;
   polyline: string;
+  /** HU-307: ajuste a la vía y ruta inusual, el mismo que devuelve GET /routes. */
+  quality: RouteQuality;
 }
 
 /** Puerto: ruta por carretera entre origen y destino para quien consulta. */

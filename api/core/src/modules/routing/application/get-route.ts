@@ -1,10 +1,13 @@
-import { ORS_DAILY_QUOTA, type LatLng, type RouteResponse } from '@panter/contracts';
+import { haversineMeters, ORS_DAILY_QUOTA, type LatLng } from '@panter/contracts';
 import {
+  assessRoute,
   colombiaDate,
   consumeRateWindow,
   isQuotaWarning,
   pointOutsideServiceArea,
+  roundForLog,
   routeCacheKey,
+  type ProviderRoute,
   type Route,
 } from '../domain/route';
 import { RoutingErrors } from './errors';
@@ -28,7 +31,7 @@ export interface GetRouteInput {
 }
 
 /** GET /routes (y el estimado de tarifa, HU-402): ruta con caché y cuota protegida. */
-export type GetRoute = (input: GetRouteInput) => Promise<RouteResponse>;
+export type GetRoute = (input: GetRouteInput) => Promise<Route & { cached: boolean }>;
 
 export interface GetRouteDeps {
   provider: RouteProvider;
@@ -48,6 +51,10 @@ export interface GetRouteDeps {
  * 4. Consulta a ORS. Cada consulta real suma al contador diario (fecha de Colombia), se
  *    registra en un log estructurado y, desde el 80 % de la cuota, se avisa con un warning.
  * 5. Sin ruta → 422 `ROUTE_NOT_FOUND`; error, cuota o falta de clave → 503 `ROUTING_UNAVAILABLE`.
+ * 6. HU-307: el proveedor devuelve la más corta de sus alternativas (una sola consulta); aquí se
+ *    calcula la calidad (ajuste a la vía y factor contra la línea recta) y, si la ruta es
+ *    inusual, se registra `route_unusual` con origen y destino redondeados. La calidad se
+ *    guarda con la ruta en la caché (clave con `ROUTE_CACHE_VERSION`).
  *
  * KV es la caché y el contador; si falla, la ruta se sigue calculando (se registra el error).
  */
@@ -78,9 +85,9 @@ export function makeGetRoute(deps: GetRouteDeps): GetRoute {
     await safely('route_rate_put', () => deps.rate.put(userId, decision.window), undefined);
 
     const started = now();
-    let route: Route;
+    let found: ProviderRoute;
     try {
-      route = await deps.provider.route({ origin, destination, profile });
+      found = await deps.provider.route({ origin, destination, profile });
     } catch (error) {
       if (!(error instanceof RouteProviderError)) throw error;
       if (error.reason === 'not_configured') {
@@ -92,6 +99,20 @@ export function makeGetRoute(deps: GetRouteDeps): GetRoute {
       throw RoutingErrors.unavailable(error.retryAfterSeconds);
     }
     await count('ok', started, 200);
+    const route = assessRoute(origin, destination, found);
+    if (route.quality.unusual) {
+      deps.log.unusualRoute({
+        profile,
+        origin: roundForLog(origin),
+        destination: roundForLog(destination),
+        distanceMeters: Math.round(route.distanceMeters),
+        straightMeters: Math.round(haversineMeters(origin, destination)),
+        detourRatio: route.quality.detourRatio,
+        originSnapMeters: route.quality.originSnapMeters,
+        destinationSnapMeters: route.quality.destinationSnapMeters,
+        alternatives: route.quality.alternatives,
+      });
+    }
     await safely('route_cache_put', () => deps.cache.put(key, route), undefined);
     return { ...route, cached: false };
   };
