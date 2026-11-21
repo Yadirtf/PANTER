@@ -40,6 +40,8 @@ export default defineConfig({
         'src/modules/pricing/**': M2_CRITICAL,
         // HU-402: el cálculo de la tarifa es una función pura de dominio con cobertura ≥ 95 %.
         'src/modules/pricing/domain/**': { statements: 95, branches: 95, functions: 95, lines: 95 },
+        // E15 · HU-308, HU-310: catálogo geográfico (barrios, veredas y lugares).
+        'src/modules/catalog/**': M2_CRITICAL,
       },
     },
     projects: [

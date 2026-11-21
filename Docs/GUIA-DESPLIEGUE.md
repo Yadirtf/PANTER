@@ -606,6 +606,78 @@ es la que se revisa en OpenStreetMap para mapear vías faltantes (HU-1102). Bús
 La caché de rutas usa la versión `v2` en la clave: al desplegar, las rutas guardadas con el
 criterio anterior se ignoran solas (expiran en 10 minutos).
 
+## E15 · Barrios y lugares
+
+No hay secretos ni recursos nuevos: barrios, veredas y lugares viven en Neon (tablas `areas`,
+`places` y `catalog_changes`, migraciones 0006 y 0007). Las lecturas son públicas (`GET /areas`,
+`/areas/locate`, `/areas/:id`) y se guardan 60 s en memoria del Worker; cualquier cambio desde la
+administración las refresca. Crear, editar, desactivar e importar es solo para ADMIN y cada
+cambio queda en el historial con autor, antes y después.
+
+### Importar barrios y veredas desde un GeoJSON
+
+En OpenStreetMap no hay límites oficiales de barrios ni veredas para Villagarzón. Pide el
+archivo a la **Alcaldía de Villagarzón** (Secretaría de Planeación: cartografía del **POT** o
+del EOT, o la base catastral). Suele venir como shapefile (`.shp`) o geodatabase; conviértelo
+con [QGIS](https://qgis.org) (gratuito):
+
+1. Abre la capa en QGIS → clic derecho → **Exportar** → **Guardar objetos como…**
+2. Formato **GeoJSON**, SRC **EPSG:4326 - WGS 84** (obligatorio: si queda en MAGNA-SIRGAS u
+   otro sistema, las coordenadas salen fuera de rango y la importación las rechaza).
+3. Si los polígonos tienen miles de puntos, antes simplifícalos: **Vectorial** → **Geometría**
+   → **Simplificar** (tolerancia 0,00001°, unos 1 m). El límite es 5 MB, 500 polígonos por
+   archivo y 5.000 puntos por polígono.
+
+Formato esperado: un `FeatureCollection` cuyas features son `Polygon` (o `MultiPolygon` de una
+sola parte), con el nombre en la propiedad `name` o `nombre` (sin importar mayúsculas: `NOMBRE`
+también sirve) y, opcionalmente, el tipo `BARRIO` o `VEREDA`. Ejemplo mínimo:
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "nombre": "El Recreo", "tipo": "BARRIO" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-76.63, 1.026],
+            [-76.625, 1.026],
+            [-76.625, 1.03],
+            [-76.63, 1.03],
+            [-76.63, 1.026]
+          ]
+        ]
+      }
+    }
+  ]
+}
+```
+
+Las coordenadas van en orden `[longitud, latitud]`. Se envía a `POST /admin/areas/import`
+(la web lo hace desde **/admin/barrios**) dentro de `geojson`, con estas opciones:
+
+| Campo          | Para qué                                                                    |
+| -------------- | --------------------------------------------------------------------------- |
+| `nameProperty` | Propiedad con el nombre si no es `name`/`nombre` (p. ej. `NOM_BARRIO`)       |
+| `kindProperty` | Propiedad con el tipo (p. ej. `tipo`); vacía o ausente → `defaultKind`       |
+| `defaultKind`  | `BARRIO` (por defecto) o `VEREDA`                                           |
+| `source`       | De dónde salió, p. ej. `Alcaldía de Villagarzón – POT 2024`                 |
+| `dryRun`       | `true` (por defecto) solo valida; `false` guarda                            |
+
+Primero siempre se hace la **vista previa** (`dryRun: true`): responde los polígonos válidos
+(y si reemplazan uno que ya existía con ese nombre) y los errores por número de feature, en
+español: geometría que no es polígono, sin nombre, tipo desconocido, fuera del área de servicio,
+bordes que se cruzan (lo detecta PostGIS con `ST_IsValid`) o nombre repetido en el archivo.
+Al confirmar (`dryRun: false`) se guardan **solo las válidas**: si ya existe un barrio con el
+mismo tipo y nombre (sin tildes ni mayúsculas) se actualiza su límite; si no, se crea. Todo va en
+una sola operación, queda en el historial como `IMPORT` y los lugares de interés recalculan en
+qué barrio o vereda quedan. Un barrio desactivado sigue desactivado aunque se reimporte.
+
+Si no hay archivo de la Alcaldía, los barrios se dibujan a mano en **/admin/barrios** (HU-309).
+
 ## Darte el rol ADMIN por primera vez
 
 El panel de administración (`/admin` en la web) solo deja entrar a cuentas con el rol ADMIN, y
