@@ -5,7 +5,7 @@ import { FaresBffRoutes, saveGeofence } from '../api/fares-client';
 import { AIRPORT, AIRPORT_ID, PERIPHERAL } from '../server/fares-test-data';
 import { geofenceBody, geofenceSaveBody, GeofenceUpdateBodySchema } from './fares';
 import { fareErrorMessage, polygonRejectionMessage } from './messages';
-import { insertMidpoint, moveVertex, toEditable } from './polygon-edit';
+import { insertMidpoint, moveVertex, toEditable } from '@/features/geo-editor/lib/polygon-edit';
 
 const WEB = 'https://panter-web-staging.panter.workers.dev';
 

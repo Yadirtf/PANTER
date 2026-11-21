@@ -2,6 +2,7 @@ import { Role } from '@panter/contracts';
 import Link from 'next/link';
 import { PlaceholderPage } from '@/shared/ui/placeholder-page';
 import { STAFF_PANEL_LABEL } from '@/features/navigation/role-home';
+import { ADMIN_AREAS_PATH } from '@/features/areas/lib/areas';
 import { ADMIN_DRIVERS_PATH } from '@/features/drivers/lib/drivers';
 import { ADMIN_FARES_PATH } from '@/features/fares/lib/fares';
 import { ADMIN_USERS_PATH } from '../lib/users';
@@ -47,6 +48,11 @@ export function AdminDashboardPlaceholder({
           <li>
             <Link href={ADMIN_FARES_PATH} className={linkClass}>
               Tarifas
+            </Link>
+          </li>
+          <li>
+            <Link href={ADMIN_AREAS_PATH} className={linkClass}>
+              Barrios y veredas
             </Link>
           </li>
         </ul>

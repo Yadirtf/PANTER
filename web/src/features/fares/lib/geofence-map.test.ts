@@ -2,14 +2,16 @@ import { PLACES } from '@panter/contracts';
 import { describe, expect, it } from 'vitest';
 import { AIRPORT, PERIPHERAL } from '../server/fares-test-data';
 import {
+  midpointFeatureCollection,
+  vertexFeatureCollection,
+} from '@/features/geo-editor/lib/polygon-map';
+import {
   GEOFENCE_KIND_COLOR,
   geofencesAt,
   geofencesFeatureCollection,
-  midpointFeatureCollection,
   shownGeofence,
-  vertexFeatureCollection,
 } from './geofence-map';
-import { moveVertex, toEditable } from './polygon-edit';
+import { moveVertex, toEditable } from '@/features/geo-editor/lib/polygon-edit';
 
 const shown = [shownGeofence(AIRPORT), shownGeofence(PERIPHERAL)];
 
