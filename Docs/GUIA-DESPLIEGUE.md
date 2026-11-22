@@ -678,6 +678,28 @@ qué barrio o vereda quedan. Un barrio desactivado sigue desactivado aunque se r
 
 Si no hay archivo de la Alcaldía, los barrios se dibujan a mano en **/admin/barrios** (HU-309).
 
+### Lugares de interés y cómo se marcan los verificados
+
+Los lugares (`GET /places`, `GET /places/nearby`) son el catálogo que usan la app y la web en vez
+de las coordenadas fijas de antes. La migración 0007 sembró 6: **solo el Aeropuerto Cananguchal
+está verificado** (coordenada publicada del aeródromo); Parque principal, Pozo Azul, Río Guineo,
+Cascadas de Vica y Mohano son estimaciones de zona (`verified: false`, con el error aproximado en
+`source`) y la app los muestra como "sin verificar".
+
+Para verificar un lugar (en **/admin/lugares**, o con `PATCH /admin/places/:id`):
+
+1. Toma la coordenada **en el sitio** con el GPS del teléfono (Google Maps → mantén pulsado tu
+   punto azul → copia "lat, lng"), o ubícalo con precisión sobre el mapa satelital.
+2. Corrige `location` y, si la entrada o el parqueadero no están en el mismo punto, agrega el
+   `pickupPoint` (debe estar a menos de 1 km del lugar y dentro del área de servicio).
+3. Marca `verified: true` y anota en `source` cómo se tomó (p. ej. "GPS en sitio, 2026-12-03,
+   precisión 5 m").
+
+El barrio o vereda del lugar se calcula solo al guardar (y se recalcula cuando se edita o importa
+un barrio). Cada cambio queda en el historial (`GET /admin/places/:id/history`). Un lugar no se
+borra: se desactiva con `active: false`. Los que sigan sin verificar se revisan en la prueba de
+campo (HU-1102).
+
 ## Darte el rol ADMIN por primera vez
 
 El panel de administración (`/admin` en la web) solo deja entrar a cuentas con el rol ADMIN, y

@@ -273,6 +273,7 @@ describe('CatalogCache', () => {
       areas: {
         list: async () => (reads++, []),
         get: async () => (reads++, null),
+        getMany: async () => (reads++, []),
         locate: async () => (reads++, null),
       },
       cache: new CatalogCache(),
@@ -283,9 +284,11 @@ describe('CatalogCache', () => {
     await reader.list({ includeInactive: true, kind: 'VEREDA', search: 'guineo' });
     await reader.get('x');
     await reader.get('x');
+    await reader.getMany(['b', 'a']);
+    await reader.getMany(['a', 'b']);
     await reader.locate({ lat: 1.029501, lng: -76.616502 });
     await reader.locate({ lat: 1.029499, lng: -76.616498 });
     await reader.locate({ lat: -0.000001, lng: 0 });
-    expect(reads).toBe(5);
+    expect(reads).toBe(6);
   });
 });

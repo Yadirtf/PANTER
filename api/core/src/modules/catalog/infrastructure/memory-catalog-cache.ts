@@ -1,5 +1,5 @@
 import type { LatLng } from '@panter/contracts';
-import type { AreaReader } from '../application/ports';
+import type { AreaReader, PlaceReader } from '../application/ports';
 
 /** Vigencia de la caché del catálogo en memoria del isolate (HU-308). */
 export const CATALOG_CACHE_TTL_MS = 60_000;
@@ -78,7 +78,35 @@ export function createCachedAreaReader(deps: {
         () => deps.areas.list(filter),
       ),
     get: (id) => cache.get(`areas:get:${id}`, now(), () => deps.areas.get(id)),
+    getMany: (ids) =>
+      cache.get(`areas:many:${[...ids].sort().join(',')}`, now(), () => deps.areas.getMany(ids)),
     locate: (point) =>
       cache.get(`areas:locate:${rounded(point)}`, now(), () => deps.areas.locate(point)),
+  };
+}
+
+/**
+ * Lecturas públicas de lugares con la caché del isolate (HU-310). `get` no pasa por la caché:
+ * lo usa la administración justo antes y después de editar.
+ */
+export function createCachedPlaceReader(deps: {
+  places: PlaceReader;
+  cache?: CatalogCache;
+  now?: () => number;
+}): PlaceReader {
+  const cache = deps.cache ?? isolateCatalogCache;
+  const now = deps.now ?? Date.now;
+  return {
+    list: (f) =>
+      cache.get(
+        `places:list:${f.category ?? '*'}:${f.includeInactive ? 1 : 0}:${f.limit}:${f.search ?? ''}`,
+        now(),
+        () => deps.places.list(f),
+      ),
+    nearby: (f) =>
+      cache.get(`places:nearby:${rounded(f.point)}:${f.radiusMeters}:${f.limit}`, now(), () =>
+        deps.places.nearby(f),
+      ),
+    get: (id) => deps.places.get(id),
   };
 }
