@@ -15,6 +15,9 @@ import { resolveVersion } from './src/config/version.ts';
 
 const BASE_APPLICATION_ID = 'co.panter.app';
 
+/** ID del proyecto @creathor/panter en EAS (builds, credenciales y updates). */
+export const EAS_PROJECT_ID = '628217fd-6974-444d-a612-5b7d86ef49b8';
+
 /** Texto del permiso de cámara (iOS lo muestra en el diálogo; Android usa el aviso de la app). */
 export const CAMERA_PERMISSION_TEXT =
   'PANTER usa la cámara para fotografiar tus documentos de conductor (cédula, licencia, tarjeta de propiedad, SOAT y revisión técnico-mecánica) y enviarlos a revisión.';
@@ -96,6 +99,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       appEnv,
       apiUrl,
       webUrl,
+      // Proyecto de EAS (@creathor/panter) creado con `eas credentials`. Con config dinámica
+      // EAS no puede escribirlo solo, así que se fija aquí.
+      eas: {
+        projectId: EAS_PROJECT_ID,
+      },
     },
   });
 };
