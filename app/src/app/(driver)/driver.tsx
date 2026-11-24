@@ -3,12 +3,11 @@ import { ModeSwitcher } from '../../features/auth/screens/mode-switcher';
 import { SignOutButton } from '../../features/auth/screens/sign-out-button';
 import { useSession } from '../../features/auth/session/session-context';
 import { MapHomeLayout } from '../../features/map/components/map-home-layout';
-import { OfflineMapPanel } from '../../features/map/components/offline-map-panel';
 import { PanterMap } from '../../features/map/components/panter-map';
 import { colors } from '../../shared/ui/form';
 
-// Inicio provisional del conductor: mapa (HU-303) con la descarga para usarlo sin señal. La
-// disponibilidad y las ofertas llegan en M3/M4.
+// Inicio provisional del conductor: mapa (HU-303). La disponibilidad y las ofertas llegan en
+// M3/M4. El mapa es de Google y no se puede descargar para usarlo sin señal.
 export default function DriverHomeScreen() {
   const { user } = useSession();
   return (
@@ -23,7 +22,6 @@ export default function DriverHomeScreen() {
           <SignOutButton />
         </>
       }
-      bottom={<OfflineMapPanel />}
     />
   );
 }

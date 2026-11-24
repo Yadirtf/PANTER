@@ -121,7 +121,7 @@ Organizado por funcionalidad en `src/`:
 | `shared/api/`             | Cliente HTTP tipado (`fetch` + esquemas Zod de `@panter/contracts`) y mensajes                    |
 | `features/auth/`          | Login OTP, store de sesión y almacenamiento en `expo-secure-store`                                |
 | `navigation/`             | `resolveRootGroup`: grupo de rutas según la sesión                                                |
-| `features/map/`           | `<PanterMap>` (HU-303): mapa base, ubicación y mapa sin señal del conductor                       |
+| `features/map/`           | `<PanterMap>` (HU-303): mapa de Google, puntos clave y ubicación                                  |
 | `features/fare-estimate/` | Destino, vehículo y estimado del pasajero con `POST /fares/estimate` (HU-404)                     |
 | `features/catalog/`       | Barrios, veredas y lugares de la API con copia en el teléfono y descripción de puntos (HU-311)    |
 
@@ -141,51 +141,30 @@ Organizado por funcionalidad en `src/`:
 
 ## Mapa (HU-303)
 
-`<PanterMap mode="passenger" | "driver">` (`src/features/map/components/panter-map.tsx`) dibuja el
-mapa propio con [`@maplibre/maplibre-react-native`](https://github.com/maplibre/maplibre-react-native)
-y el estilo de `@panter/map-style`:
+`<PanterMap mode="passenger" | "driver">` (`src/features/map/components/panter-map.tsx`) dibuja un
+mapa de **Google Maps** con [`react-native-maps`](https://github.com/react-native-maps/react-native-maps)
+1.29.11 (la versión de `bundledNativeModules.json` de Expo 58) y `PROVIDER_GOOGLE`. Antes era
+MapLibre con un mapa propio de OpenStreetMap; se cambió porque las rutas ahora salen de Google
+Routes API y sus condiciones exigen mostrarlas sobre un mapa de Google.
 
-1. Lee `GET /tiles/basemap.json` (sin sesión), lo valida con `parseBasemapManifest` y guarda la
-   última copia en el teléfono para armar el estilo sin señal.
-2. `buildStyle({ ...basemapUrls(apiUrl, manifest), theme })`: la fuente vectorial es
-   `pmtiles://https://<api>/tiles/panter-AAAAMMDD.pmtiles`; glifos y sprites salen de `/tiles`.
-3. Tema con `themeFor(new Date())` (hora de Colombia); un temporizador lo reevalúa justo al pasar
-   las 20:00 y las 05:00, y también al volver la app a primer plano.
-4. Registra los íconos de lugares y vehículos (`iconPngDataUrl(id, 3)`) con `<Images>`; la cámara
-   queda limitada a `SERVICE_AREA` y arranca en `PLACES.VILLAGARZON_CENTER`.
-5. Ubicación en primer plano con `expo-location` (texto del permiso en `app.config.ts`): punto del
-   usuario, botón "centrar en mi ubicación" y avisos para permiso negado o bloqueado, GPS apagado
-   y posición fuera del área de servicio. El mapa funciona igual en todos los casos.
+1. Tema con `themeFor(new Date())` (hora de Colombia): de noche usa `NIGHT_STYLE`
+   (`src/features/map/google-map.ts`). Un temporizador lo reevalúa a las 20:00 y a las 05:00.
+2. Cámara en `PLACES.VILLAGARZON_CENTER`, limitada a `SERVICE_AREA` con `setMapBoundaries`.
+3. Puntos clave (`KEY_PLACES` de `@panter/map-style`) como marcadores con su ícono
+   (`iconPngDataUrl(id, 3)`).
+4. Tocar un lugar de Google (`onPoiClick`) o un punto clave lo propone como destino (HU-311).
+5. Ubicación en primer plano con `expo-location`: punto del usuario, botón "centrar en mi
+   ubicación" y avisos para permiso negado o bloqueado, GPS apagado y fuera del área.
+6. `mapPadding` deja el logo de Google (obligatorio) encima del panel inferior.
 
-**Versión de MapLibre.** `@maplibre/maplibre-react-native` 11.5.1 (fijada, sin `^`): no está en
-`bundledNativeModules.json` de Expo 58. Sus `peerDependencies` piden `react-native >=0.80`,
-`react >=19.1`, `expo >=54` y `@types/geojson`; los componentes son de Fabric (codegen `type: all`),
-así que funciona con la nueva arquitectura de RN 0.88 (`newArchEnabled=true`), y su
-`build.gradle` contempla AGP 9 con `android.builtInKotlin=false`, como genera Expo 58. Trae su
-config plugin (`app.plugin.js`), que solo escribe propiedades `org.maplibre.reactnative.*` en
-`gradle.properties`: no hace falta editar `android/`. Usa **MapLibre Native Android 13.6.1**,
-que incluye `PMTilesFileSource` (soporte de `pmtiles://` desde la 11.7): lee el archivo por rangos
-tanto por HTTP(S) como desde `file://` (pasa por `LocalFileSource`).
+**Clave del SDK.** El build lee `GOOGLE_MAPS_ANDROID_API_KEY` (`.env` local, secreto de GitHub
+del mismo nombre en los Environments `staging` y `production`). Sin ella compila, pero el mapa
+sale en gris. En Google Cloud la clave se restringe a **Maps SDK for Android** y a cada paquete
+(`co.panter.app`, `co.panter.app.staging`, `co.panter.app.dev`) con la huella SHA-1 de su
+llave de firma. El SDK móvil sin Map ID no tiene costo.
 
-### Mapa sin señal (conductor, §6.1)
-
-En el modo conductor, el panel "Descargar mapa para usar sin señal" guarda en
-`<documentos>/offline-map/` el `.pmtiles` vigente, los glifos (3 fuentes × 7 rangos, los mismos de
-`scripts/generar_mapa.sh`) y los sprites claro/oscuro:
-
-- Antes de empezar muestra el tamaño (`size` de basemap.json) y el espacio libre; si no alcanza
-  (con 20 MB de margen) no empieza y dice cuánto falta.
-- Descarga por bloques de 2 MB con `Range` (la API responde 206) y los agrega a
-  `<archivo>.part`. Si se corta la señal, sigue sola al volver; si se cierra la app, "Reanudar"
-  continúa desde el tamaño del `.part`.
-- Al terminar verifica el SHA-256 del manifiesto (`File.digest`) y reemplaza la copia anterior.
-- Si basemap.json publica otro build, ofrece "Actualizar mapa" (la copia vieja sigue en uso hasta
-  que la nueva esté verificada) y descarta una descarga a medias del build anterior.
-- Con la copia guardada y sin red (o sin respuesta de la API), el estilo usa
-  `pmtiles://file:///…/offline-map/panter-AAAAMMDD.pmtiles` y glifos y sprites `file://`.
-
-La lógica (URLs, manifiesto, tema, permisos y estados de la descarga) es TypeScript puro con
-pruebas en Vitest; los adaptadores de Expo están en `src/features/map/native/`.
+**Sin señal.** Google no permite descargar su mapa desde una app, así que se quitó la descarga
+del mapa para conductores (§6.1). Google guarda en caché las zonas ya vistas.
 
 ## Estimado del pasajero (HU-404)
 

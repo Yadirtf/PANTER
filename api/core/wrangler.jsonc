@@ -29,6 +29,7 @@
     // kid de la llave JWT (HU-103). Llaves en los secretos JWT_PRIVATE_KEY y JWT_PUBLIC_KEY.
     "JWT_KID": "panter-dev",
     // M2 · HU-305: la API key de OpenRouteService es el secreto ORS_API_KEY (no una var).
+    // Si existe el secreto GOOGLE_ROUTES_API_KEY, las rutas se calculan con Google en vez de ORS.
   },
   // MARCADOR: reemplazar por el ID real (`wrangler kv namespace create panter-kv`).
   // En `wrangler dev` y en las pruebas el KV es simulado por Miniflare y el ID no importa.

@@ -1,10 +1,11 @@
 // Capas del estimado sobre <PanterMap>: ruta, pin de origen (arrastrable) y pin de destino. Con
 // los avisos de HU-307: el punto de la vía donde empieza o termina la ruta (si el pin quedó
 // lejos) y la línea recta punteada entre origen y destino (si la ruta es inusual).
-import { GeoJSONSource, Layer, ViewAnnotation } from '@maplibre/maplibre-react-native';
 import type { LatLng } from '@panter/contracts';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { Marker, Polyline } from 'react-native-maps';
+import { fromGoogle, toGoogle } from '../../map/google-map';
 
 const ROUTE_COLOR = '#1d4ed8';
 const ORIGIN_COLOR = '#15803d';
@@ -31,14 +32,6 @@ interface TripMapLayersProps {
   straightLine?: readonly [LatLng, LatLng] | null;
 }
 
-function lineFeature(points: readonly LatLng[]): GeoJSON.Feature<GeoJSON.LineString> {
-  return {
-    type: 'Feature',
-    properties: {},
-    geometry: { type: 'LineString', coordinates: points.map((p) => [p.lng, p.lat]) },
-  };
-}
-
 export function TripMapLayers({
   origin,
   onOriginDragged,
@@ -48,94 +41,97 @@ export function TripMapLayers({
   snaps = [],
   straightLine = null,
 }: TripMapLayersProps) {
-  const line = useMemo(() => lineFeature(route), [route]);
-  const straight = useMemo(() => (straightLine ? lineFeature(straightLine) : null), [straightLine]);
-  const snapLinks = useMemo<GeoJSON.FeatureCollection<GeoJSON.LineString>>(
-    () => ({
-      type: 'FeatureCollection',
-      features: snaps.map(({ pin, road }) => lineFeature([pin, road])),
-    }),
-    [snaps],
+  const line = useMemo(() => route.map(toGoogle), [route]);
+  const straight = useMemo(
+    () => (straightLine ? straightLine.map(toGoogle) : null),
+    [straightLine],
   );
 
   return (
     <>
-      {route.length > 1 ? (
-        <GeoJSONSource id="trip-route" data={line}>
+      {line.length > 1 ? (
+        <>
           {/* Borde blanco para que la ruta se lea en el tema claro y en el oscuro. */}
-          <Layer
-            id="trip-route-casing"
-            type="line"
-            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-            paint={{ 'line-color': '#ffffff', 'line-width': 9 }}
+          <Polyline
+            coordinates={line}
+            strokeColor="#ffffff"
+            strokeWidth={9}
+            lineCap="round"
+            lineJoin="round"
+            zIndex={1}
           />
-          <Layer
-            id="trip-route-line"
-            type="line"
-            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-            paint={{ 'line-color': ROUTE_COLOR, 'line-width': 5 }}
+          <Polyline
+            coordinates={line}
+            strokeColor={ROUTE_COLOR}
+            strokeWidth={5}
+            lineCap="round"
+            lineJoin="round"
+            zIndex={2}
           />
-        </GeoJSONSource>
+        </>
       ) : null}
 
       {straight ? (
         // Referencia de la línea recta: punteada para no confundirla con la ruta.
-        <GeoJSONSource id="trip-straight-line" data={straight}>
-          <Layer
-            id="trip-straight-line"
-            type="line"
-            paint={{
-              'line-color': WARNING_COLOR,
-              'line-width': 2.5,
-              'line-dasharray': [2, 2],
-              'line-opacity': 0.9,
-            }}
-          />
-        </GeoJSONSource>
+        <Polyline
+          coordinates={straight}
+          strokeColor={WARNING_COLOR}
+          strokeWidth={2.5}
+          lineDashPattern={[8, 8]}
+          zIndex={3}
+        />
       ) : null}
 
-      {snaps.length > 0 ? (
-        <GeoJSONSource id="trip-snap-links" data={snapLinks}>
-          <Layer
-            id="trip-snap-links"
-            type="line"
-            paint={{ 'line-color': WARNING_COLOR, 'line-width': 2, 'line-dasharray': [1, 1.5] }}
-          />
-        </GeoJSONSource>
-      ) : null}
+      {snaps.map(({ pin, road }, index) => (
+        <Polyline
+          key={`snap-link-${index}`}
+          coordinates={[toGoogle(pin), toGoogle(road)]}
+          strokeColor={WARNING_COLOR}
+          strokeWidth={2}
+          lineDashPattern={[4, 6]}
+          zIndex={3}
+        />
+      ))}
       {snaps.map(({ road }, index) => (
-        <ViewAnnotation
+        <Marker
           key={`snap-${index}`}
-          id={`trip-snap-${index}`}
-          lngLat={[road.lng, road.lat]}
+          identifier={`trip-snap-${index}`}
+          coordinate={toGoogle(road)}
+          anchor={{ x: 0.5, y: 0.5 }}
+          tracksViewChanges={false}
         >
           <View
             style={styles.snap}
             accessibilityLabel="Punto de la vía donde empieza o termina la ruta"
           />
-        </ViewAnnotation>
+        </Marker>
       ))}
 
-      <ViewAnnotation
-        id="trip-origin"
-        lngLat={[origin.lng, origin.lat]}
+      <Marker
+        identifier="trip-origin"
+        coordinate={toGoogle(origin)}
+        anchor={{ x: 0.5, y: 0.5 }}
         draggable
-        onDragEnd={(event) => {
-          const [lng, lat] = event.nativeEvent.lngLat;
-          onOriginDragged({ lat, lng });
-        }}
+        tracksViewChanges={false}
+        zIndex={10}
+        onDragEnd={(event) => onOriginDragged(fromGoogle(event.nativeEvent.coordinate))}
       >
         <View
           style={[styles.pin, { backgroundColor: ORIGIN_COLOR }]}
           accessibilityLabel="Origen. Arrástralo para cambiar el punto de recogida"
         />
-      </ViewAnnotation>
+      </Marker>
 
       {destination ? (
-        <ViewAnnotation
-          id="trip-destination"
-          lngLat={[destination.lng, destination.lat]}
-          anchor="bottom"
+        <Marker
+          // La clave cambia con el estado: así el marcador se vuelve a dibujar (tracksViewChanges
+          // está apagado para no redibujarlo en cada cuadro).
+          key={pendingConfirmation ? 'destination-pending' : 'destination'}
+          identifier="trip-destination"
+          coordinate={toGoogle(destination)}
+          anchor={{ x: 0.5, y: 1 }}
+          tracksViewChanges={false}
+          zIndex={9}
         >
           <View
             style={[styles.flag, pendingConfirmation && styles.pending]}
@@ -144,7 +140,7 @@ export function TripMapLayers({
             <View style={styles.flagHead} />
             <View style={styles.flagStem} />
           </View>
-        </ViewAnnotation>
+        </Marker>
       ) : null}
     </>
   );

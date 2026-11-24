@@ -1,30 +1,27 @@
 // Croquis del barrio o vereda elegido sobre <PanterMap>: relleno suave y borde.
-import { GeoJSONSource, Layer } from '@maplibre/maplibre-react-native';
 import type { Area } from '@panter/contracts';
 import { useMemo } from 'react';
-import { areaFeature } from '../selection';
+import { Polygon } from 'react-native-maps';
+import { toGoogle } from '../../map/google-map';
 
 const AREA_COLOR = '#7c3aed';
+const AREA_FILL = 'rgba(124, 58, 237, 0.12)';
+const WARNING_COLOR = '#b42318';
 
 export function AreaOutlineLayer({ area, warning }: { area: Area; warning: boolean }) {
-  const feature = useMemo(() => areaFeature(area), [area]);
+  const [outer, holes] = useMemo(() => {
+    const rings = area.polygon.map((ring) => ring.map(toGoogle));
+    return [rings[0] ?? [], rings.slice(1)] as const;
+  }, [area]);
+  if (outer.length < 3) return null;
   return (
-    <GeoJSONSource id="destination-area" data={feature}>
-      <Layer
-        id="destination-area-fill"
-        type="fill"
-        paint={{ 'fill-color': AREA_COLOR, 'fill-opacity': 0.12 }}
-      />
-      <Layer
-        id="destination-area-line"
-        type="line"
-        layout={{ 'line-join': 'round' }}
-        paint={{
-          'line-color': warning ? '#b42318' : AREA_COLOR,
-          'line-width': 3,
-          'line-opacity': 0.9,
-        }}
-      />
-    </GeoJSONSource>
+    <Polygon
+      coordinates={outer}
+      holes={holes}
+      fillColor={AREA_FILL}
+      strokeColor={warning ? WARNING_COLOR : AREA_COLOR}
+      strokeWidth={3}
+      lineJoin="round"
+    />
   );
 }

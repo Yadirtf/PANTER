@@ -1,6 +1,10 @@
 import type { ConfigContext } from 'expo/config';
 import { afterEach, describe, expect, it } from 'vitest';
-import buildConfig, { CAMERA_PERMISSION_TEXT, LOCATION_PERMISSION_TEXT } from './app.config';
+import buildConfig, {
+  CAMERA_PERMISSION_TEXT,
+  googleMapsPluginOptions,
+  LOCATION_PERMISSION_TEXT,
+} from './app.config';
 
 const KEYS = [
   'APP_ENV',
@@ -8,6 +12,7 @@ const KEYS = [
   'EXPO_PUBLIC_WEB_URL',
   'APP_VERSION',
   'APP_VERSION_CODE',
+  'GOOGLE_MAPS_ANDROID_API_KEY',
 ] as const;
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
 
@@ -109,6 +114,18 @@ describe('app.config', () => {
     expect(LOCATION_PERMISSION_TEXT).toMatch(
       /^PANTER usa tu ubicación mientras tienes la app abierta/,
     );
-    expect(plugins).toContain('@maplibre/maplibre-react-native');
+  });
+
+  it('mapa de Google con la clave de GOOGLE_MAPS_ANDROID_API_KEY', () => {
+    const find = (env: Record<string, string>) =>
+      (withEnv(env).plugins ?? []).find(
+        (plugin) => Array.isArray(plugin) && plugin[0] === 'react-native-maps',
+      );
+    expect(find({ GOOGLE_MAPS_ANDROID_API_KEY: ' maps-key ' })).toEqual([
+      'react-native-maps',
+      { androidGoogleMapsApiKey: 'maps-key' },
+    ]);
+    expect(find({})).toEqual(['react-native-maps', {}]);
+    expect(googleMapsPluginOptions(undefined)).toEqual({});
   });
 });

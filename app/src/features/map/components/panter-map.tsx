@@ -1,56 +1,41 @@
-// <PanterMap> (HU-303): mapa base propio con @maplibre/maplibre-react-native.
-// - Estilo de @panter/map-style (buildStyle) sobre el .pmtiles de basemap.json o, en modo
-//   conductor y sin señal, sobre la copia descargada.
+// <PanterMap> (HU-303): mapa de Google con react-native-maps (PROVIDER_GOOGLE).
+// Se usa Google Maps porque las rutas salen de Google Routes API y sus condiciones exigen
+// mostrarlas sobre un mapa de Google.
 // - Tema claro/oscuro según la hora de Colombia (cambia solo a las 20:00 y a las 05:00).
-// - Íconos de lugares y vehículos registrados con <Images>.
+// - Puntos clave de PANTER (KEY_PLACES) con su ícono propio.
 // - Cámara limitada al área de servicio y centrada en Villagarzón.
 // - Punto de ubicación del usuario, botón "centrar en mi ubicación" y avisos de permiso, GPS
 //   apagado y fuera del área, sin bloquear el mapa.
-// - Con `tapPois`, cada toque consulta las capas de establecimientos y lugares del estilo
-//   (queryRenderedFeatures) y entrega el que tenga nombre (HU-311).
-// Los hijos (fuentes, capas, anotaciones) se dibujan encima del mapa base.
+// - Con `tapPois`, tocar un lugar de Google o un punto clave lo entrega como destino (HU-311).
+// - `bottomInset` también es el margen del mapa: el logo de Google (obligatorio) queda visible
+//   encima del panel inferior.
+// Los hijos (rutas, marcadores, polígonos de react-native-maps) se dibujan encima del mapa.
 import { MaterialIcons } from '@expo/vector-icons';
-import {
-  Camera,
-  type CameraRef,
-  Images,
-  Map as MapView,
-  type MapRef,
-  NativeUserLocation,
-} from '@maplibre/maplibre-react-native';
-import { type LatLng, PLACES, SERVICE_AREA } from '@panter/contracts';
-import { buildStyle } from '@panter/map-style';
-import {
-  type ReactNode,
-  type Ref,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { LatLng } from '@panter/contracts';
+import { ICON_SIZE, iconPngDataUrl, KEY_PLACES } from '@panter/map-style';
+import { type ReactNode, type Ref, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Button, colors } from '../../../shared/ui/form';
-import { useMapSource } from '../hooks/use-map-source';
+import {
+  CAMERA_DURATION_MS,
+  edgePadding,
+  fromGoogle,
+  INITIAL_CAMERA,
+  MAP_BOUNDARIES,
+  mapStyleFor,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  toGoogle,
+  USER_ZOOM,
+} from '../google-map';
 import { useMapTheme } from '../hooks/use-map-theme';
 import { useUserLocation } from '../hooks/use-user-location';
 import { canCenterOnUser, type LocationStatus, locationNotice } from '../location/location-status';
-import { type MapPoi, POI_TAP_TOLERANCE_PX, poiFromFeatures, TAPPABLE_POI_LAYERS } from '../poi';
-import { mapImages } from './map-images';
+import { type MapPoi, poiFromGoogle, poiFromKeyPlace } from '../poi';
 
-/** [oeste, sur, este, norte], el formato de `maxBounds` de maplibre-react-native. */
-const MAX_BOUNDS: [number, number, number, number] = [
-  SERVICE_AREA.west,
-  SERVICE_AREA.south,
-  SERVICE_AREA.east,
-  SERVICE_AREA.north,
-];
-const INITIAL_CENTER: [number, number] = [
-  PLACES.VILLAGARZON_CENTER.lng,
-  PLACES.VILLAGARZON_CENTER.lat,
-];
-const INITIAL_ZOOM = 13;
-const USER_ZOOM = 16;
+/** Densidad de los íconos de los puntos clave (la de la mayoría de teléfonos Android). */
+const ICON_PIXEL_RATIO = 3;
 
 export interface PanterMapHandle {
   flyTo(point: LatLng, zoom?: number): void;
@@ -62,11 +47,11 @@ export interface PanterMapProps {
   mode: 'passenger' | 'driver';
   children?: ReactNode;
   /**
-   * Toque en el mapa (no en una anotación). Con `tapPois`, `poi` es el establecimiento o lugar
-   * con nombre que se tocó, o `null`.
+   * Toque en el mapa. Con `tapPois`, `poi` es el lugar de Google o el punto clave de PANTER que
+   * se tocó, o `null` si se tocó un punto cualquiera.
    */
   onPress?: (point: LatLng, poi: MapPoi | null) => void;
-  /** Consultar los POI del mapa base y los lugares de PANTER en cada toque. */
+  /** Entregar como destino los lugares de Google y los puntos clave tocados. */
   tapPois?: boolean;
   /** Cada cambio del estado de ubicación del usuario. */
   onLocationChange?: (status: LocationStatus) => void;
@@ -76,7 +61,6 @@ export interface PanterMapProps {
 }
 
 export function PanterMap({
-  mode,
   children,
   onPress,
   tapPois = false,
@@ -85,42 +69,33 @@ export function PanterMap({
   ref,
 }: PanterMapProps) {
   const theme = useMapTheme();
-  const { source, online, reload } = useMapSource(mode);
   const location = useUserLocation();
-  const camera = useRef<CameraRef>(null);
-  const mapView = useRef<MapRef>(null);
-  const [failed, setFailed] = useState(false);
-
-  const urls = source && source.kind !== 'unavailable' ? source.urls : null;
-  // Se recalcula solo si cambian las URLs o el tema: cada estilo nuevo recarga el mapa.
-  const urlsKey = urls ? `${urls.tilesUrl}|${urls.glyphsUrl}|${urls.spriteUrl}` : null;
-  const style = useMemo(
-    () => (urls ? buildStyle({ ...urls, theme }) : null),
-    // `urls` cambia de identidad sin cambiar de valor: se compara por `urlsKey`.
-    [urlsKey, theme],
+  const map = useRef<MapView>(null);
+  const customMapStyle = useMemo(() => mapStyleFor(theme), [theme]);
+  const keyPlaceIcons = useMemo(
+    () =>
+      Object.fromEntries(
+        KEY_PLACES.map((place) => [place.id, iconPngDataUrl(place.icon, ICON_PIXEL_RATIO)]),
+      ),
+    [],
   );
-  // Una fuente nueva (otra red, otra copia) merece un intento nuevo.
-  useEffect(() => setFailed(false), [style]);
 
   useEffect(() => onLocationChange?.(location.status), [location.status, onLocationChange]);
+
+  function flyTo(point: LatLng, zoom = USER_ZOOM) {
+    map.current?.animateCamera({ center: toGoogle(point), zoom }, { duration: CAMERA_DURATION_MS });
+  }
 
   useImperativeHandle(
     ref,
     () => ({
-      flyTo(point, zoom = USER_ZOOM) {
-        camera.current?.flyTo({ center: [point.lng, point.lat], zoom, duration: 800 });
-      },
+      flyTo,
       fitPoints(points, padding = 64) {
         if (points.length === 0) return;
-        const lngs = points.map((p) => p.lng);
-        const lats = points.map((p) => p.lat);
-        camera.current?.fitBounds(
-          [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)],
-          {
-            padding: { top: padding, right: padding, bottom: padding, left: padding },
-            duration: 800,
-          },
-        );
+        map.current?.fitToCoordinates(points.map(toGoogle), {
+          edgePadding: edgePadding(padding),
+          animated: true,
+        });
       },
     }),
     [],
@@ -132,80 +107,55 @@ export function PanterMap({
 
   return (
     <View style={styles.flex}>
-      {style ? (
-        <MapView
-          ref={mapView}
-          style={styles.flex}
-          mapStyle={style}
-          logo={false}
-          compass={false}
-          attributionPosition={{ bottom: bottomInset + 8, left: 8 }}
-          onPress={(event) => {
-            const [lng, lat] = event.nativeEvent.lngLat;
-            const point = { lat, lng };
-            if (!onPress) return;
-            if (!tapPois || !mapView.current) {
-              onPress(point, null);
-              return;
-            }
-            const [x, y] = event.nativeEvent.point;
-            const t = POI_TAP_TOLERANCE_PX;
-            mapView.current
-              .queryRenderedFeatures(
-                [
-                  [x - t, y - t],
-                  [x + t, y + t],
-                ],
-                { layers: [...TAPPABLE_POI_LAYERS] },
-              )
-              .then(
-                (features) => onPress(point, poiFromFeatures(features, point)),
-                // Si la consulta falla (estilo cargando), el toque vale como un punto cualquiera.
-                () => onPress(point, null),
-              );
-          }}
-          onDidFailLoadingMap={() => setFailed(true)}
-          onDidFinishLoadingMap={() => setFailed(false)}
-        >
-          <Camera
-            ref={camera}
-            initialViewState={{ center: INITIAL_CENTER, zoom: INITIAL_ZOOM }}
-            maxBounds={MAX_BOUNDS}
-            minZoom={8}
-            maxZoom={18}
-          />
-          <Images images={mapImages()} />
-          {showUser ? <NativeUserLocation /> : null}
-          {children}
-        </MapView>
-      ) : (
-        <MapPlaceholder
-          loading={source === null}
-          message={
-            source?.kind === 'unavailable'
-              ? source.reason === 'offline'
-                ? 'Sin conexión no podemos cargar el mapa. Se mostrará cuando vuelva la señal.'
-                : 'No pudimos cargar el mapa. Intenta de nuevo.'
-              : null
-          }
-          onRetry={reload}
-        />
-      )}
+      <MapView
+        ref={map}
+        provider={PROVIDER_GOOGLE}
+        style={styles.flex}
+        initialCamera={INITIAL_CAMERA}
+        customMapStyle={customMapStyle}
+        minZoomLevel={MIN_ZOOM}
+        maxZoomLevel={MAX_ZOOM}
+        mapPadding={{ top: 0, right: 0, bottom: bottomInset, left: 0 }}
+        showsUserLocation={showUser}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        toolbarEnabled={false}
+        rotateEnabled={false}
+        pitchEnabled={false}
+        onMapReady={() =>
+          map.current?.setMapBoundaries(MAP_BOUNDARIES.northEast, MAP_BOUNDARIES.southWest)
+        }
+        onPress={(event) => {
+          // Un toque sobre un marcador también llega aquí con action "marker-press": se ignora.
+          if (event.nativeEvent.action === 'marker-press') return;
+          onPress?.(fromGoogle(event.nativeEvent.coordinate), null);
+        }}
+        onPoiClick={(event) => {
+          const point = fromGoogle(event.nativeEvent.coordinate);
+          onPress?.(point, tapPois ? poiFromGoogle(event.nativeEvent) : null);
+        }}
+      >
+        {KEY_PLACES.map((place) => (
+          <Marker
+            key={place.id}
+            identifier={`place-${place.id}`}
+            coordinate={toGoogle(place.position)}
+            title={place.name}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+            onPress={() => onPress?.(place.position, tapPois ? poiFromKeyPlace(place) : null)}
+          >
+            <Image
+              source={{ uri: keyPlaceIcons[place.id] }}
+              style={styles.placeIcon}
+              accessibilityLabel={place.name}
+            />
+          </Marker>
+        ))}
+        {children}
+      </MapView>
 
       <View pointerEvents="box-none" style={[styles.bottom, { bottom: bottomInset + 16 }]}>
-        {failed && style ? (
-          <Notice
-            title="El mapa no cargó completo"
-            body={
-              online
-                ? 'Revisa tu conexión e intenta de nuevo.'
-                : mode === 'driver'
-                  ? 'Estás sin señal. Descarga el mapa para usarlo sin conexión.'
-                  : 'Estás sin señal. El mapa se completará cuando vuelva la conexión.'
-            }
-            action={{ label: 'Reintentar', onPress: reload }}
-          />
-        ) : null}
         {notice ? (
           <Notice
             title={notice.title}
@@ -222,11 +172,7 @@ export function PanterMap({
             enabled={canCenterOnUser(status)}
             onPress={() => {
               if (canCenterOnUser(status)) {
-                camera.current?.flyTo({
-                  center: [status.position.lng, status.position.lat],
-                  zoom: USER_ZOOM,
-                  duration: 800,
-                });
+                flyTo(status.position);
               } else if (notice?.action) {
                 location.act(notice.action.kind);
               }
@@ -278,37 +224,9 @@ function Notice({
   );
 }
 
-function MapPlaceholder({
-  loading,
-  message,
-  onRetry,
-}: {
-  loading: boolean;
-  message: string | null;
-  onRetry: () => void;
-}) {
-  return (
-    <View style={[styles.flex, styles.placeholder]}>
-      {loading ? <ActivityIndicator size="large" color={colors.primary} /> : null}
-      {message ? (
-        <>
-          <Text style={styles.noticeBody}>{message}</Text>
-          <Button title="Reintentar" variant="secondary" onPress={onRetry} />
-        </>
-      ) : null}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  placeholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    padding: 24,
-    backgroundColor: '#e8efe9',
-  },
+  placeIcon: { width: ICON_SIZE, height: ICON_SIZE },
   bottom: { position: 'absolute', left: 12, right: 12, gap: 8 },
   controls: { flexDirection: 'row', justifyContent: 'flex-end' },
   center: {

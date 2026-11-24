@@ -606,6 +606,75 @@ es la que se revisa en OpenStreetMap para mapear vías faltantes (HU-1102). Bús
 La caché de rutas usa la versión `v2` en la clave: al desplegar, las rutas guardadas con el
 criterio anterior se ignoran solas (expiran en 10 minutos).
 
+## Rutas con Google Routes API
+
+Desde noviembre de 2026 la API puede calcular las rutas con
+[Google Routes API](https://developers.google.com/maps/documentation/routes) en vez de ORS. Se
+cambió porque OpenStreetMap (los datos de ORS) marca la Carrera 7 de Villagarzón (vía 45, entre
+la entrada sur y el centro) como de un solo sentido, y los viajes hacia el norte daban rodeos de
+unos 20 km por Puerto Limón. Google usa sus propios datos.
+
+| Nombre                  | Tipo    | Dónde se carga                       | Para qué                                     |
+| ----------------------- | ------- | ------------------------------------ | -------------------------------------------- |
+| `GOOGLE_ROUTES_API_KEY` | Secreto | Cloudflare (o `wrangler secret put`) | Calcular rutas con Google (tiene prioridad sobre `ORS_API_KEY`) |
+
+- **Con** `GOOGLE_ROUTES_API_KEY`: las rutas salen de Google. `ORS_API_KEY` se ignora.
+- **Sin** ella: todo sigue con ORS, como antes. Borrar el secreto es la forma de volver atrás.
+
+**Condición de Google:** las rutas de Google solo se pueden mostrar sobre un mapa de Google.
+Carga la clave en un ambiente solo cuando la app de ese ambiente ya use Google Maps.
+
+### Costo
+
+La API pide siempre el SKU más barato, **Compute Routes Essentials**: 10.000 consultas gratis al
+mes y después unos 5 USD por cada 1.000
+([precios](https://developers.google.com/maps/billing-and-pricing/pricing)). La caché de 10
+minutos y el límite de 20 consultas por usuario y hora siguen igual. El contador diario de KV
+avisa (`ors_quota_warning`, mismo nombre de evento) desde el 80 % de 333 consultas al día, lo que
+cabe en las 10.000 gratis al mes. El aviso no bloquea nada: el gasto real lo controla el
+presupuesto de Google Cloud.
+
+### Crear la clave
+
+1. Entra a [console.cloud.google.com](https://console.cloud.google.com) con el Gmail del
+   proyecto y crea un proyecto `panter`.
+2. **Facturación:** vincula una cuenta de facturación (pide tarjeta). Crea un **presupuesto**
+   con alertas (por ejemplo 20 USD al mes) en **Facturación → Presupuestos y alertas**.
+3. **APIs y servicios → Biblioteca:** habilita **Routes API**.
+4. **APIs y servicios → Credenciales → Crear credenciales → Clave de API.** En la clave:
+   - **Restricciones de API:** solo **Routes API**.
+   - **Restricciones de aplicación:** ninguna (la usa el Worker desde los servidores de
+     Cloudflare, que no tienen IP fija).
+   - Nombre: `panter-api-staging`. Para producción crea otra (`panter-api`).
+5. **Cuotas (opcional, recomendado):** en **Routes API → Cuotas**, baja "Compute Routes
+   requests per day" a, por ejemplo, 1.000 para poner un techo al gasto.
+6. Carga el secreto en el Worker:
+   - **Navegador:** Cloudflare → **Workers & Pages** → `panter-api-staging` → **Settings** →
+     **Variables and Secrets** → **Add** → tipo **Secret** → nombre `GOOGLE_ROUTES_API_KEY` →
+     pega la clave → **Deploy**.
+   - **Terminal** (desde `api/core`): `pnpm exec wrangler secret put GOOGLE_ROUTES_API_KEY --env staging`.
+
+### Clave del mapa de la app (Maps SDK for Android)
+
+La app dibuja un mapa de Google y necesita **otra** clave, distinta de la de rutas:
+
+1. En el mismo proyecto de Google Cloud habilita **Maps SDK for Android** (sin Map ID no tiene
+   costo).
+2. **Credenciales → Crear credenciales → Clave de API**, nombre `panter-app`:
+   - **Restricciones de API:** solo **Maps SDK for Android**.
+   - **Restricciones de aplicación:** **Apps de Android**; agrega cada paquete con la huella
+     SHA-1 de su llave de firma: `co.panter.app` y `co.panter.app.staging` (la SHA-1 de la llave
+     de subida, `keytool -list -v -keystore <keystore>`), y `co.panter.app.dev` con la de
+     depuración si compilas en local.
+3. Cárgala como secreto `GOOGLE_MAPS_ANDROID_API_KEY` en los Environments `staging` y
+   `production` de GitHub (**Settings → Environments**). En local, en `app/.env`.
+
+Sin esta clave la app compila, pero el mapa sale en gris.
+
+Comprobación: la misma consulta de la sección anterior. Si la clave está mal o la API no está
+habilitada, `/routes` responde `503 ROUTING_UNAVAILABLE` y el log `ors_request` muestra
+`status: 403`.
+
 ## E15 · Barrios y lugares
 
 No hay secretos ni recursos nuevos: barrios, veredas y lugares viven en Neon (tablas `areas`,
