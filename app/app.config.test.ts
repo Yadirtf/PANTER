@@ -56,6 +56,7 @@ describe('app.config', () => {
       appEnv: 'production',
       apiUrl: 'https://api.example.com',
       webUrl: null,
+      googleMapsConfigured: false,
       eas: { projectId: '628217fd-6974-444d-a612-5b7d86ef49b8' },
     });
   });
