@@ -16,6 +16,7 @@ import { ICON_SIZE, iconPngDataUrl, KEY_PLACES } from '@panter/map-style';
 import { type ReactNode, type Ref, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { env } from '../../../config/env';
 import { Button, colors } from '../../../shared/ui/form';
 import {
   CAMERA_DURATION_MS,
@@ -100,6 +101,19 @@ export function PanterMap({
     }),
     [],
   );
+
+  if (!env.googleMapsConfigured) {
+    // Sin clave, el SDK de Google Maps lanza "API key not found" y Android cierra la app.
+    return (
+      <View style={[styles.flex, styles.missingKey]}>
+        <Notice
+          title="Mapa no disponible"
+          body="Esta versión de la app se compiló sin la clave de Google Maps (GOOGLE_MAPS_ANDROID_API_KEY). Instala una versión nueva."
+          action={null}
+        />
+      </View>
+    );
+  }
 
   const notice = locationNotice(location.status);
   const status = location.status;
@@ -226,6 +240,7 @@ function Notice({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  missingKey: { justifyContent: 'center', padding: 16, backgroundColor: '#e8efe9' },
   placeIcon: { width: ICON_SIZE, height: ICON_SIZE },
   bottom: { position: 'absolute', left: 12, right: 12, gap: 8 },
   controls: { flexDirection: 'row', justifyContent: 'flex-end' },

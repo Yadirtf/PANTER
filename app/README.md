@@ -159,7 +159,7 @@ Routes API y sus condiciones exigen mostrarlas sobre un mapa de Google.
 
 **Clave del SDK.** El build lee `GOOGLE_MAPS_ANDROID_API_KEY` (`.env` local, secreto de GitHub
 del mismo nombre en los Environments `staging` y `production`). Sin ella compila, pero el mapa
-sale en gris. En Google Cloud la clave se restringe a **Maps SDK for Android** y a cada paquete
+muestra "Mapa no disponible" (sin aviso, el SDK cerraría la app). En Google Cloud la clave se restringe a **Maps SDK for Android** y a cada paquete
 (`co.panter.app`, `co.panter.app.staging`, `co.panter.app.dev`) con la huella SHA-1 de su
 llave de firma. El SDK móvil sin Map ID no tiene costo.
 

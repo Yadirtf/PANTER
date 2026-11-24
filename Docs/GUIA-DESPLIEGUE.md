@@ -669,7 +669,7 @@ La app dibuja un mapa de Google y necesita **otra** clave, distinta de la de rut
 3. Cárgala como secreto `GOOGLE_MAPS_ANDROID_API_KEY` en los Environments `staging` y
    `production` de GitHub (**Settings → Environments**). En local, en `app/.env`.
 
-Sin esta clave la app compila, pero el mapa sale en gris.
+Sin esta clave la app compila, pero el mapa muestra "Mapa no disponible" (sin aviso, el SDK cerraría la app).
 
 Comprobación: la misma consulta de la sección anterior. Si la clave está mal o la API no está
 habilitada, `/routes` responde `503 ROUTING_UNAVAILABLE` y el log `ors_request` muestra

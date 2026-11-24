@@ -8,6 +8,7 @@ interface AppExtra {
   appEnv?: string;
   apiUrl?: string;
   webUrl?: string | null;
+  googleMapsConfigured?: boolean;
 }
 
 const extra = (Constants.expoConfig?.extra ?? {}) as AppExtra;
@@ -17,7 +18,12 @@ const base = resolveEnvironment({
   EXPO_PUBLIC_API_URL: extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL,
 });
 
-export const env: AppEnvironment & { readonly webUrl: string | null } = {
+export const env: AppEnvironment & {
+  readonly webUrl: string | null;
+  /** El build trae la clave del SDK de Google Maps (sin ella, abrir el mapa cierra la app). */
+  readonly googleMapsConfigured: boolean;
+} = {
   ...base,
   webUrl: resolveWebUrl(extra.webUrl ?? process.env.EXPO_PUBLIC_WEB_URL, base),
+  googleMapsConfigured: extra.googleMapsConfigured === true,
 };

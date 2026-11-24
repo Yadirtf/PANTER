@@ -27,15 +27,18 @@ export const LOCATION_PERMISSION_TEXT =
   'PANTER usa tu ubicación mientras tienes la app abierta para mostrarte en el mapa, saber dónde recogerte y calcular la tarifa de tu viaje.';
 
 /**
- * Opciones del plugin de react-native-maps. Sin clave el build funciona, pero el mapa sale en
- * gris: se avisa en consola para que no pase inadvertido.
+ * Opciones del plugin de react-native-maps. Sin clave el build funciona, pero el SDK de Google
+ * Maps cerraría la app al abrir el mapa ("API key not found"): la app muestra un aviso en su
+ * lugar (extra.googleMapsConfigured) y aquí se avisa en consola.
  */
 export function googleMapsPluginOptions(apiKey: string | undefined): {
   androidGoogleMapsApiKey?: string;
 } {
   const key = apiKey?.trim();
   if (!key) {
-    console.warn('GOOGLE_MAPS_ANDROID_API_KEY no está definida: el mapa de Google saldrá en gris.');
+    console.warn(
+      'GOOGLE_MAPS_ANDROID_API_KEY no está definida: la app mostrará un aviso en vez del mapa.',
+    );
     return {};
   }
   return { androidGoogleMapsApiKey: key };
@@ -52,6 +55,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     APP_VERSION: process.env.APP_VERSION,
     APP_VERSION_CODE: process.env.APP_VERSION_CODE,
   });
+  const googleMaps = googleMapsPluginOptions(process.env.GOOGLE_MAPS_ANDROID_API_KEY);
   const nameSuffix = appEnv === 'production' ? '' : ` (${appEnv})`;
 
   // Firma de release con la llave de subida si hay PANTER_UPLOAD_* (ver plugins/release-signing.ts).
@@ -106,7 +110,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Mapa nativo (HU-303): Google Maps con react-native-maps. Las rutas salen de Google Routes
       // API y sus condiciones exigen un mapa de Google. La clave del SDK de Maps llega en
       // GOOGLE_MAPS_ANDROID_API_KEY (restringida al paquete y la huella SHA-1 de la app).
-      ['react-native-maps', googleMapsPluginOptions(process.env.GOOGLE_MAPS_ANDROID_API_KEY)],
+      ['react-native-maps', googleMaps],
     ],
     experiments: {
       typedRoutes: true,
@@ -115,6 +119,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       appEnv,
       apiUrl,
       webUrl,
+      // Sin clave, el SDK de Google Maps cierra la app al crear el mapa: <PanterMap> lo lee y
+      // muestra un aviso en vez del mapa.
+      googleMapsConfigured: googleMaps.androidGoogleMapsApiKey !== undefined,
       // Proyecto de EAS (@creathor/panter) creado con `eas credentials`. Con config dinámica
       // EAS no puede escribirlo solo, así que se fija aquí.
       eas: {
