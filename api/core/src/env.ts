@@ -74,6 +74,12 @@ export interface Env {
   // --- M2 · HU-305 Rutas. Ver Docs/GUIA-DESPLIEGUE.md → "M2 · Rutas con OpenRouteService". ---
   /** Secreto: API key de OpenRouteService. Sin ella, /routes y /fares/estimate responden 503. */
   ORS_API_KEY?: string;
+  /**
+   * Secreto: API key de Google Routes API. Si está, las rutas se calculan con Google en vez de
+   * ORS (ver Docs/GUIA-DESPLIEGUE.md → "Rutas con Google Routes API"). Las condiciones de Google
+   * exigen mostrar esas rutas sobre un mapa de Google.
+   */
+  GOOGLE_ROUTES_API_KEY?: string;
 }
 
 /** Tipo de contexto de Hono para toda la app. */
