@@ -126,6 +126,8 @@ describe('app.config', () => {
       { androidGoogleMapsApiKey: 'maps-key' },
     ]);
     expect(find({})).toEqual(['react-native-maps', {}]);
+    expect(withEnv({ GOOGLE_MAPS_ANDROID_API_KEY: 'k' }).extra?.googleMapsConfigured).toBe(true);
+    expect(withEnv({}).extra?.googleMapsConfigured).toBe(false);
     expect(googleMapsPluginOptions(undefined)).toEqual({});
   });
 });

@@ -30,7 +30,7 @@ jobs:
       # Marcador hasta que exista la variable EXPO_PUBLIC_API_URL del Environment staging.
       DEFAULT_STAGING_API_URL: https://panter-api-staging.example.workers.dev
       # Clave del SDK de Google Maps (restringida a co.panter.app.staging y su SHA-1). Sin ella el
-      # build sigue, pero el mapa sale en gris.
+      # build sigue, pero la app muestra "Mapa no disponible".
       GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
     steps:
       - uses: actions/checkout@v5
