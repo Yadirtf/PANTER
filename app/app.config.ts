@@ -26,6 +26,21 @@ export const CAMERA_PERMISSION_TEXT =
 export const LOCATION_PERMISSION_TEXT =
   'PANTER usa tu ubicación mientras tienes la app abierta para mostrarte en el mapa, saber dónde recogerte y calcular la tarifa de tu viaje.';
 
+/**
+ * Opciones del plugin de react-native-maps. Sin clave el build funciona, pero el mapa sale en
+ * gris: se avisa en consola para que no pase inadvertido.
+ */
+export function googleMapsPluginOptions(apiKey: string | undefined): {
+  androidGoogleMapsApiKey?: string;
+} {
+  const key = apiKey?.trim();
+  if (!key) {
+    console.warn('GOOGLE_MAPS_ANDROID_API_KEY no está definida: el mapa de Google saldrá en gris.');
+    return {};
+  }
+  return { androidGoogleMapsApiKey: key };
+}
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const { appEnv, apiUrl } = resolveEnvironment({
     APP_ENV: process.env.APP_ENV,
@@ -88,9 +103,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           isIosBackgroundLocationEnabled: false,
         },
       ],
-      // Mapa nativo (HU-303). Sin opciones: MapLibre Native Android 13.6.1, la versión que
-      // fija @maplibre/maplibre-react-native 11.5.1 (incluye la fuente pmtiles://).
-      '@maplibre/maplibre-react-native',
+      // Mapa nativo (HU-303): Google Maps con react-native-maps. Las rutas salen de Google Routes
+      // API y sus condiciones exigen un mapa de Google. La clave del SDK de Maps llega en
+      // GOOGLE_MAPS_ANDROID_API_KEY (restringida al paquete y la huella SHA-1 de la app).
+      ['react-native-maps', googleMapsPluginOptions(process.env.GOOGLE_MAPS_ANDROID_API_KEY)],
     ],
     experiments: {
       typedRoutes: true,

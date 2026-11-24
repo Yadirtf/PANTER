@@ -1,5 +1,5 @@
 // Pantalla de inicio sobre el mapa: el mapa ocupa todo y encima van un panel superior (selector
-// de modo, cerrar sesión) y uno inferior (descarga sin señal, destino…). El alto del panel
+// de modo, cerrar sesión) y uno inferior (destino, tarifa…). El alto del panel
 // inferior se pasa al mapa para que el botón de centrar y los avisos queden por encima.
 import { type ReactNode, useState } from 'react';
 import { StyleSheet, View } from 'react-native';

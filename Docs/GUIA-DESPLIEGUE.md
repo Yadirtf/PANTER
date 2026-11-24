@@ -654,6 +654,23 @@ presupuesto de Google Cloud.
      pega la clave → **Deploy**.
    - **Terminal** (desde `api/core`): `pnpm exec wrangler secret put GOOGLE_ROUTES_API_KEY --env staging`.
 
+### Clave del mapa de la app (Maps SDK for Android)
+
+La app dibuja un mapa de Google y necesita **otra** clave, distinta de la de rutas:
+
+1. En el mismo proyecto de Google Cloud habilita **Maps SDK for Android** (sin Map ID no tiene
+   costo).
+2. **Credenciales → Crear credenciales → Clave de API**, nombre `panter-app`:
+   - **Restricciones de API:** solo **Maps SDK for Android**.
+   - **Restricciones de aplicación:** **Apps de Android**; agrega cada paquete con la huella
+     SHA-1 de su llave de firma: `co.panter.app` y `co.panter.app.staging` (la SHA-1 de la llave
+     de subida, `keytool -list -v -keystore <keystore>`), y `co.panter.app.dev` con la de
+     depuración si compilas en local.
+3. Cárgala como secreto `GOOGLE_MAPS_ANDROID_API_KEY` en los Environments `staging` y
+   `production` de GitHub (**Settings → Environments**). En local, en `app/.env`.
+
+Sin esta clave la app compila, pero el mapa sale en gris.
+
 Comprobación: la misma consulta de la sección anterior. Si la clave está mal o la API no está
 habilitada, `/routes` responde `503 ROUTING_UNAVAILABLE` y el log `ors_request` muestra
 `status: 403`.
